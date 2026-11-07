@@ -568,7 +568,7 @@ Aligned with the master plan's phases. Each milestone ends with something demons
 5. **Secondary pages:** Projects (status-labelled), Experience, About (with CV anchor), Contact, draft Privacy notice, designed 404 and error boundary.
 6. **Security and privacy controls:** hash-based CSP and hardened headers, real 404s, no source maps, no cookies/storage/third-party requests, SHA-pinned CI workflows, CodeQL, dependency review, Dependabot with cooldown.
 
-### Remediation after independent review (Codex)
+### Remediation after independent code review
 
 No critical or high findings. Addressed:
 

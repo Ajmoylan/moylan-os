@@ -82,9 +82,12 @@ End-to-end tests run against the production build, served with the same headers 
 
 The original master plan and visual references live in `docs/references/`. They're kept locally for development and intentionally excluded from the repository.
 
-## Development process
+## Engineering workflow
 
-MOYLAN//OS is developed by Alex Moylan with AI assistance: Claude Code for design and implementation, and Codex for independent engineering review. All changes are directed and reviewed by Alex and must pass the automated quality, accessibility and security checks above.
+- **Feature branches and protected `main`:** changes land through pull requests that must pass CI (formatting, lint, type checks, unit tests, build-output and budget checks, end-to-end and accessibility tests), CodeQL and dependency review.
+- **Recorded decisions:** architectural choices are documented as ADRs in [docs/ARCHITECTURE.md §14](docs/ARCHITECTURE.md#14-architecture-decision-records), and each milestone is independently reviewed before the next one begins.
+- **Supply-chain hygiene:** exact dependency versions, SHA-pinned GitHub Actions, and Dependabot updates with a cooldown period.
+- **Authorship:** developed by Alex Moylan, using AI-assisted tooling for implementation support and code review. Alex directs the design and architecture and reviews every change.
 
 ## Security
 

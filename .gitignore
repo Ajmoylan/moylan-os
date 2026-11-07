@@ -26,12 +26,11 @@ local.settings.json
 .azure/
 
 # Private source material: master plans and agent reference artwork stay local
-# (available to developers and AI assistants, not published). See README.md.
+# (available for development, not published). See README.md.
 docs/references/
 
-# AI assistant local state (shared launch configuration is kept)
-.claude/*
-!.claude/launch.json
+# Local development-tool configuration and state (kept on each machine, never published)
+.claude/
 
 # Logs and OS/editor files
 *.log
