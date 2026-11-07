@@ -251,7 +251,7 @@ upgrade-insecure-requests
 - **Human access:** the owner account uses phishing-resistant MFA. Day-to-day work uses the narrowest role that suffices (e.g., *Contributor* scoped to the resource group, not *Owner* on the subscription). No standing access for third parties.
 - **Resource lock** (`CanNotDelete`) on the resource group to prevent accidental deletion (and with it, dangling-DNS takeover risk).
 - **Activity Log alerts** on configuration changes, custom-domain changes and role assignments.
-- **Budget alert** on the subscription and resource group (e.g., notify at 50% / 80% / 100% of a small monthly amount). Student-credit usage stays minimal.
+- **Budget alert** on the subscription and resource group (e.g., notify at 50% / 80% / 100% of a small monthly amount).
 - **Microsoft Defender for Cloud** free (foundational CSPM) recommendations reviewed before launch.
 
 ### 11.2 Domain and DNS

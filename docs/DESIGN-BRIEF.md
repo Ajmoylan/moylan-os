@@ -236,7 +236,7 @@ Per the master plan, **don't generate artwork first.**
 
 1. **Prototype** with procedural/placeholder graphics to settle layout, interaction, motion and text placement.
 2. **Write an asset brief** per final asset: use, aspect ratio, colour, subject, negative space, duration, quality target and fallback.
-3. **Generate** with Higgsfield Plus (one paid month, only once art direction is settled; verify price, usage rules, commercial terms and renewal first).
+3. **Generate** with Higgsfield Plus only once the art direction is settled, after verifying its usage rules and commercial licence terms.
 4. **Select and optimise:** AVIF/WebP/SVG stills; lightweight WebM/MP4 loops with static fallbacks.
 5. **Archive** raw exports, prompts and licence evidence outside the deployed app; only optimised finals go into `public/assets/`.
 
