@@ -1,6 +1,43 @@
+# MOYLAN//OS: files that must never be committed.
+
+# Dependencies and build output
 node_modules/
+build/
 dist/
+.react-router/
+*.tsbuildinfo
+.eslintcache
+
+# Test and coverage reports
+coverage/
+playwright-report/
+test-results/
+blob-report/
+
+# Secrets and local configuration (docs/SECURITY.md §7)
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+local.settings.json
+.azure/
+
+# Private source material: master plans and agent reference artwork stay local
+# (available to developers and AI assistants, not published). See README.md.
+docs/references/
+
+# AI assistant local state (shared launch configuration is kept)
+.claude/*
+!.claude/launch.json
+
+# Logs and OS/editor files
+*.log
+npm-debug.log*
 .DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
