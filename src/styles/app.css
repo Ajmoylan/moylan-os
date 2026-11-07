@@ -1,0 +1,270 @@
+@import "tailwindcss";
+
+/*
+ * MOYLAN//OS design tokens (DESIGN-BRIEF §2). Agent colours must match src/agents/registry.ts
+ * (enforced by registry.test.ts). No inline styles anywhere: per-agent colour comes from
+ * [data-agent] attributes below, which keeps the Content Security Policy strict.
+ */
+@theme {
+  --color-obsidian: #05080b;
+  --color-abyss: #0a1117;
+  --color-gunmetal: #121c24;
+  --color-steel: #1e2b35;
+  --color-text: #e6f0f3;
+  --color-text-muted: #93a4af;
+  --color-text-subtle: #6b7c87;
+
+  --color-nex: #3fe0d0;
+  --color-nex-deep: #14a89c;
+  --color-forge: #ffb347;
+  --color-forge-deep: #ff7a1a;
+  --color-syn: #b98cff;
+  --color-syn-deep: #e05cff;
+  --color-atlas: #5cb8ff;
+  --color-atlas-deep: #2f7bff;
+  --color-cipher: #3ddc97;
+  --color-cipher-deep: #13a86b;
+
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --ease-os: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ---- Agent accent scopes --------------------------------------------------------------- */
+:root,
+[data-agent="nex"] {
+  --accent: var(--color-nex);
+  --accent-deep: var(--color-nex-deep);
+}
+[data-agent="forge"] {
+  --accent: var(--color-forge);
+  --accent-deep: var(--color-forge-deep);
+}
+[data-agent="syn"] {
+  --accent: var(--color-syn);
+  --accent-deep: var(--color-syn-deep);
+}
+[data-agent="atlas"] {
+  --accent: var(--color-atlas);
+  --accent-deep: var(--color-atlas-deep);
+}
+[data-agent="cipher"] {
+  --accent: var(--color-cipher);
+  --accent-deep: var(--color-cipher-deep);
+}
+
+/* ---- Base ------------------------------------------------------------------------------ */
+@layer base {
+  html {
+    color-scheme: dark;
+    background-color: var(--color-obsidian);
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    min-height: 100dvh;
+    background-color: var(--color-obsidian);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: color-mix(in oklab, var(--accent) 35%, transparent);
+    color: var(--color-text);
+  }
+
+  /* Focus: 2px accent ring with an obsidian offset, always visible on keyboard focus. */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
+  /* Programmatic focus targets (route headings) don't need a ring. */
+  [tabindex="-1"]:focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ---- Components ------------------------------------------------------------------------ */
+@layer components {
+  /* Atmospheric static backdrop: the non-WebGL baseline the 3D stage will sit on. */
+  .os-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    pointer-events: none;
+    background:
+      radial-gradient(60rem 40rem at 78% 18%, rgb(63 224 208 / 0.1), transparent 65%),
+      radial-gradient(50rem 36rem at 8% 92%, rgb(20 168 156 / 0.07), transparent 60%),
+      linear-gradient(180deg, var(--color-obsidian), var(--color-abyss) 55%, var(--color-obsidian));
+  }
+  .os-backdrop::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgb(230 240 243 / 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(230 240 243 / 0.025) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: radial-gradient(ellipse 80% 70% at 60% 30%, #000 30%, transparent 75%);
+  }
+
+  /* WebGL stage layer (src/experience/Stage.tsx): between the static backdrop and the content. */
+  .os-stage {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+  }
+
+  /* "// LABEL" system voice. */
+  .os-label {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1.4;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+
+  .os-panel {
+    position: relative;
+    border: 1px solid var(--color-steel);
+    border-radius: 14px;
+    background-color: rgb(18 28 36 / 0.72);
+  }
+  @supports (backdrop-filter: blur(1px)) {
+    .os-panel {
+      backdrop-filter: blur(10px);
+    }
+  }
+
+  /* Viewfinder corner brackets (DESIGN-BRIEF §2). */
+  .os-brackets {
+    position: relative;
+  }
+  .os-brackets::before,
+  .os-brackets::after {
+    content: "";
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    border-color: color-mix(in oklab, var(--accent) 70%, transparent);
+    border-style: solid;
+    pointer-events: none;
+  }
+  .os-brackets::before {
+    top: 0;
+    left: 0;
+    border-width: 1px 0 0 1px;
+  }
+  .os-brackets::after {
+    right: 0;
+    bottom: 0;
+    border-width: 0 1px 1px 0;
+  }
+
+  /* Pathway card: lifts and glows in its agent's accent on hover/focus. */
+  .os-pathway {
+    transition:
+      border-color 200ms var(--ease-os),
+      background-color 200ms var(--ease-os),
+      transform 300ms var(--ease-os),
+      box-shadow 300ms var(--ease-os);
+  }
+  .os-pathway:hover,
+  .os-pathway:focus-within {
+    border-color: color-mix(in oklab, var(--accent) 60%, var(--color-steel));
+    background-color: rgb(18 28 36 / 0.9);
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--accent) 25%, transparent),
+      0 24px 60px -30px color-mix(in oklab, var(--accent) 55%, transparent);
+    transform: translateY(-2px);
+  }
+  .os-pathway .os-arrow {
+    transition: transform 300ms var(--ease-os);
+  }
+  .os-pathway:hover .os-arrow,
+  .os-pathway:focus-within .os-arrow {
+    transform: translateX(4px);
+  }
+
+  /* Status badge (truthfulness rule). */
+  .os-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border: 1px solid var(--color-steel);
+    border-radius: 999px;
+    padding: 0.15rem 0.6rem;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+  .os-status::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background-color: currentColor;
+  }
+  .os-status[data-status="completed"] {
+    color: var(--color-cipher);
+  }
+  .os-status[data-status="in-progress"] {
+    color: var(--color-nex);
+  }
+  .os-status[data-status="planned"] {
+    color: var(--color-forge);
+  }
+
+  /* Prose for long-form pages (privacy notice). */
+  .os-prose h2 {
+    margin-top: 2.5rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .os-prose p,
+  .os-prose ul {
+    margin-top: 0.85rem;
+    color: var(--color-text-muted);
+  }
+  .os-prose ul {
+    list-style: disc;
+    padding-left: 1.25rem;
+  }
+  .os-prose li + li {
+    margin-top: 0.35rem;
+  }
+  .os-prose a {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .os-prose strong {
+    color: var(--color-text);
+    font-weight: 600;
+  }
+}

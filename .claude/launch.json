@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "moylan-os-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/serve-static.mjs"],
+      "port": 4173
+    },
+    {
+      "name": "moylan-os-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5173
+    }
+  ]
+}
