@@ -7,25 +7,24 @@ import {
   CustomBlending,
   OneFactor,
   ShaderMaterial,
-  Vector2,
-  Vector3,
+  type Vector3,
   type IUniform,
 } from "three";
 import type { EffectiveMotion } from "~/motion/policy";
-import { FLOW_RANGE, FlowField } from "../flow/FlowField";
+import { FlowField } from "../flow/FlowField";
+import {
+  clearInteraction,
+  interactionUniforms,
+  syncInteraction,
+  type StageInteraction,
+} from "../flow/interaction";
 import { MAX_STEP_SECONDS } from "../flow/policy";
 import { PointerTracker } from "../flow/PointerTracker";
 import { FrameMonitor } from "../performance/FrameMonitor";
 import { drawCount, stepDown, type Quality } from "../performance/quality";
-import { ambientLook, type Palette, type TierSettings } from "./config";
+import { ambientLook, rgb, type Palette, type TierSettings } from "./config";
 import { generateParticles } from "./particles";
 import { particleFragmentShader, particleVertexShader } from "./shaders";
-
-/** sRGB hex → raw RGB vector (bypasses colour management: the shader outputs these values as-is). */
-function rgb(hex: string): Vector3 {
-  const value = Number.parseInt(hex.slice(1), 16);
-  return new Vector3(((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255);
-}
 
 /** Wide layouts put text on the left, so dimming fades in from the left edge there. */
 const WIDE_ASPECT = 1.2;
@@ -46,6 +45,12 @@ export interface AmbientFieldProps {
   statsRef: RefObject<HTMLElement | null>;
   /** Called once, after the first frame has rendered. */
   onFirstFrame: () => void;
+  /**
+   * The stage's shared cursor-interaction substrate (ADR-004). This field owns it: it attaches the
+   * only pointer listener, runs the only flow simulation and writes the result here every frame
+   * for every other layer (NEX) to sample.
+   */
+  interaction: StageInteraction;
 }
 
 /**
@@ -65,6 +70,7 @@ export function AmbientField({
   palette = ambientLook.palette,
   statsRef,
   onFirstFrame,
+  interaction,
 }: AmbientFieldProps) {
   const gl = useThree((state) => state.gl);
   const invalidate = useThree((state) => state.invalidate);
@@ -77,8 +83,11 @@ export function AmbientField({
     return g;
   }, [settings.particles]);
 
+  // Shared-flow uniforms (ADR-004), kept as a typed object so `syncInteraction` can update them.
+  const flowUniforms = useMemo(() => interactionUniforms(), []);
   const material = useMemo(() => {
     const uniforms: Record<string, IUniform> = {
+      ...flowUniforms,
       uTime: { value: 0 },
       uDrift: { value: ambientLook.drift },
       uMeander: { value: ambientLook.meander },
@@ -90,16 +99,8 @@ export function AmbientField({
       uBase: { value: rgb(ambientLook.palette.base) },
       uAccent: { value: rgb(ambientLook.palette.accent) },
       uHot: { value: rgb(ambientLook.palette.hot) },
-      uAspect: { value: 1 },
       uTextDim: { value: ambientLook.textDimWide },
       uTextDimFromLeft: { value: 1 },
-      uFlowMode: { value: 0 },
-      uFlow: { value: null },
-      uFlowEncoded: { value: 0 },
-      uFlowRange: { value: FLOW_RANGE },
-      uPointer: { value: new Vector2() },
-      uPointerVelocity: { value: new Vector2() },
-      uPointerRadius: { value: ambientLook.cursor.radius },
       uInfluence: { value: ambientLook.cursor.influence },
       uGlow: { value: ambientLook.cursor.glow },
     };
@@ -115,7 +116,7 @@ export function AmbientField({
       blendSrc: OneFactor,
       blendDst: OneFactor,
     });
-  }, []);
+  }, [flowUniforms]);
 
   // Palette changes (future agents) only touch uniform values.
   useEffect(() => {
@@ -137,11 +138,12 @@ export function AmbientField({
   // reduced/off at runtime disposes the render targets and detaches the listeners.
   const tracker = useRef<PointerTracker | null>(null);
   const flow = useRef<FlowField | null>(null);
+  // The result is published in the shared interaction for every other layer.
   useEffect(() => {
     const stage = statsRef.current;
-    const u = material.uniforms;
+    clearInteraction(interaction);
     if (!pointerEffects) {
-      u.uFlowMode!.value = 0;
+      syncInteraction(flowUniforms, interaction, 1);
       if (stage) stage.dataset.stageFlow = "none";
       return;
     }
@@ -150,18 +152,18 @@ export function AmbientField({
     const field = FlowField.create(gl, settings.flowSize, ambientLook.cursor);
     tracker.current = pointer;
     flow.current = field;
-    u.uFlowMode!.value = field ? 1 : 2;
-    u.uFlowEncoded!.value = field?.encoded ? 1 : 0;
-    if (stage) stage.dataset.stageFlow = field?.format ?? "analytic";
+    interaction.mode = field?.format ?? "analytic";
+    interaction.radius = ambientLook.cursor.radius;
+    if (stage) stage.dataset.stageFlow = interaction.mode;
     return () => {
       pointer.detach();
       field?.dispose();
       tracker.current = null;
       flow.current = null;
-      u.uFlowMode!.value = 0;
-      u.uFlow!.value = null;
+      clearInteraction(interaction);
+      syncInteraction(flowUniforms, interaction, 1);
     };
-  }, [pointerEffects, gl, settings.flowSize, material, statsRef]);
+  }, [pointerEffects, gl, settings.flowSize, flowUniforms, statsRef, interaction]);
 
   // The drawn count is derived from the tier and the adapted share on every change, including
   // a new geometry after a tier change. A layout effect, so no frame draws the full range first.
@@ -193,7 +195,6 @@ export function AmbientField({
 
     // Only full motion advances time: reduced motion renders a still, fully formed field.
     if (motion === "full") u.uTime!.value += dt;
-    u.uAspect!.value = aspect;
     u.uPixelRatio!.value = state.viewport.dpr;
     const wide = aspect > WIDE_ASPECT;
     u.uTextDimFromLeft!.value = wide ? 1 : 0;
@@ -205,12 +206,14 @@ export function AmbientField({
       const field = flow.current;
       if (field) {
         field.step(state.gl, dt, sample, aspect);
-        u.uFlow!.value = field.texture;
+        interaction.texture = field.texture;
       } else {
-        (u.uPointer!.value as Vector2).set(sample.u * 2 - 1, sample.v * 2 - 1);
-        (u.uPointerVelocity!.value as Vector2).set(sample.smoothVx, sample.smoothVy);
+        interaction.pointer.set(sample.u * 2 - 1, sample.v * 2 - 1);
+        interaction.velocity.set(sample.smoothVx, sample.smoothVy);
       }
     }
+    // This field consumes the shared interaction exactly as every other layer does.
+    syncInteraction(flowUniforms, interaction, aspect);
 
     const stage = statsRef.current;
     // Publish what the renderer and geometry actually use, whenever it changes (adaptation,

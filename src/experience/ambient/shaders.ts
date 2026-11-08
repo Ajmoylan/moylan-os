@@ -1,3 +1,5 @@
+import { FLOW_GLSL } from "../flow/interaction";
+
 /**
  * GLSL for the ambient particle field. Positions are computed entirely on the GPU from static
  * attributes plus a few uniforms, so animating 12k particles costs one draw call and no per-frame
@@ -20,18 +22,11 @@ uniform float uHotFraction;
 uniform vec3 uBase;
 uniform vec3 uAccent;
 uniform vec3 uHot;
-uniform float uAspect;
 uniform float uTextDim;
 uniform float uTextDimFromLeft;
 
-// Pointer interaction (ADR-004): 0 = none, 1 = flow-map texture, 2 = analytic fallback.
-uniform float uFlowMode;
-uniform sampler2D uFlow;
-uniform float uFlowEncoded;
-uniform float uFlowRange;
-uniform vec2 uPointer;
-uniform vec2 uPointerVelocity;
-uniform float uPointerRadius;
+// Pointer interaction (ADR-004): the stage's shared flow (flow map or analytic fallback).
+${FLOW_GLSL}
 uniform float uInfluence;
 uniform float uGlow;
 
@@ -41,10 +36,6 @@ varying vec3 vColor;
 varying float vAlpha;
 
 const float WRAP_X = 1.15;
-
-vec2 decodeFlow(vec4 c) {
-  return uFlowEncoded > 0.5 ? (c.xy - 0.5) * 2.0 * uFlowRange : c.xy;
-}
 
 void main() {
   float depth = position.z;
@@ -68,14 +59,7 @@ void main() {
   // so particles ripple away from the cursor and settle back on their own.
   float stir = 0.0;
   if (uFlowMode > 0.5) {
-    vec2 flow;
-    if (uFlowMode < 1.5) {
-      flow = decodeFlow(texture2D(uFlow, clamp(p * 0.5 + 0.5, 0.0, 1.0)));
-    } else {
-      vec2 d = p - uPointer;
-      d.x *= uAspect;
-      flow = uPointerVelocity * exp(-dot(d, d) / (4.0 * uPointerRadius * uPointerRadius));
-    }
+    vec2 flow = sampleFlow(p);
     p += flow * uInfluence * (0.35 + 0.65 * depth);
     stir = clamp(length(flow) * 0.25, 0.0, 1.0);
   }
@@ -95,7 +79,7 @@ void main() {
   float dim = uTextDimFromLeft > 0.5 ? uTextDim * (1.0 - smoothstep(-0.75, 0.3, p.x)) : uTextDim;
   alpha *= 1.0 - dim;
   // Soft vignette at the top and bottom edges.
-  alpha *= smoothstep(1.1, 0.7, abs(p.y));
+  alpha *= 1.0 - smoothstep(0.7, 1.1, abs(p.y));
 
   vAlpha = alpha * uBrightness * (1.0 + stir * uGlow);
 }

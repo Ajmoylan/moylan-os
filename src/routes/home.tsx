@@ -83,13 +83,16 @@ export default function Home() {
             </div>
           </div>
 
-          <figure className="relative mx-auto w-full max-w-md lg:max-w-none">
-            <div className="os-brackets p-4 sm:p-8">
-              <NexEmblem className="h-auto w-full" />
+          {/* NEX: on wide screens beside the hero text, on narrow screens above it. The square
+              box is the stage's layout anchor (data-stage-anchor): when WebGL runs, the live NEX is
+              drawn here and the static emblem (which keeps NEX's text equivalent) fades out. */}
+          <figure className="relative order-first mx-auto w-full max-w-[min(19rem,78vw)] sm:max-w-sm lg:order-none lg:max-w-none">
+            <div data-stage-anchor="nex" className="os-brackets aspect-square p-4 sm:p-8">
+              <div data-nex-poster>
+                <NexEmblem className="h-auto w-full" />
+              </div>
             </div>
-            <figcaption className="mt-3 text-center os-label">
-              NEX · static core · interactive version in development
-            </figcaption>
+            <figcaption className="mt-3 text-center os-label">NEX · host of MOYLAN//OS</figcaption>
           </figure>
         </section>
       </Container>

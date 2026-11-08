@@ -241,7 +241,7 @@ Per the master plan, **don't generate artwork first.**
 4. **Select and optimise:** AVIF/WebP/SVG stills; lightweight WebM/MP4 loops with static fallbacks.
 5. **Archive** raw exports, prompts and licence evidence outside the deployed app; only optimised finals go into `public/assets/`.
 
-**(Proposed)** The interactive agents are **procedural** (code-generated geometry and shaders), not image-based. Higgsfield assets serve static fallbacks/posters, Open Graph images, project-card art, ambient textures and optional cinematic loops.
+**(Proposed)** The interactive agents are **procedural** (code-generated geometry and shaders), not image-based. Higgsfield assets serve static fallbacks/posters, Open Graph images, project-card art, ambient textures and optional cinematic loops. **Applied to NEX (Milestone 2.3):** a Higgsfield-designed 3D reference model served as the design source; its ring composition, proportions and motion were extracted as parameters and rendered procedurally (ARCHITECTURE §19). The model itself is not published or loaded.
 
 ---
 

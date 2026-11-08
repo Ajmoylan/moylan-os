@@ -213,6 +213,25 @@
     transition-duration: 150ms;
   }
 
+  /*
+   * NEX poster (Milestone 2.3): the static emblem stays in the DOM, carrying NEX's text
+   * equivalent, and fades out while the stage draws the live NEX at the same anchor. If the stage
+   * is lost, unmounted or never loads, the emblem is simply visible.
+   */
+  [data-nex-poster] {
+    transition: opacity 1200ms var(--ease-os);
+  }
+  :root:has(
+      .os-stage:is(
+          [data-stage-state="running"],
+          [data-stage-state="static"],
+          [data-stage-state="paused"]
+        )[data-nex-state="visible"]
+    )
+    [data-nex-poster] {
+    opacity: 0;
+  }
+
   /* "// LABEL" system voice. */
   .os-label {
     font-family: var(--font-mono);

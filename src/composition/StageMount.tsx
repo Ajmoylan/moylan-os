@@ -114,7 +114,12 @@ export function StageMount() {
   return (
     <StageBoundary onFail={markFailed}>
       <Suspense fallback={null}>
-        <Stage agent={agentForPath(pathname)} plan={plan} onUnavailable={markFailed} />
+        <Stage
+          agent={agentForPath(pathname)}
+          plan={plan}
+          path={pathname}
+          onUnavailable={markFailed}
+        />
       </Suspense>
     </StageBoundary>
   );
