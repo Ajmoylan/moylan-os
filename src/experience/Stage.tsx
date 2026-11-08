@@ -2,8 +2,12 @@ import { Canvas, type RootState } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { AgentId } from "~/agents/registry";
 import { AmbientField } from "./ambient/AmbientField";
-import { settingsForTier } from "./ambient/config";
+import { ambientLook, settingsForTier } from "./ambient/config";
 import type { StagePlan } from "./capabilities";
+import { createInteraction } from "./flow/interaction";
+import { NexAvatar } from "./nex/NexAvatar";
+import { NEX_PARAMS } from "./nex/params";
+import { CAMERA_DISTANCE } from "./nex/placement";
 import {
   FULL_QUALITY,
   dprRange,
@@ -17,6 +21,8 @@ export interface StageProps {
   /** Agent hosting the current URL (from the route manifest). */
   agent: AgentId;
   plan: StagePlan;
+  /** Current route path: stage layers that follow page anchors (NEX) re-read them on change. */
+  path?: string;
   /**
    * The WebGL stage can't continue this visit (context lost for too long or too often). The
    * composition root then records tier 0 for the session and the static design remains.
@@ -27,6 +33,14 @@ export interface StageProps {
 /** Context-loss policy (ARCHITECTURE §9.4). */
 export const RESTORE_TIMEOUT_MS = 3000;
 export const MAX_CONTEXT_LOSSES = 2;
+
+/** One perspective camera for the 3D agents (the ambient field draws in screen space). */
+const CAMERA = {
+  fov: NEX_PARAMS.fov,
+  near: 0.1,
+  far: 40,
+  position: [0, 0, CAMERA_DISTANCE] as [number, number, number],
+};
 
 const GL_OPTIONS = {
   alpha: true,
@@ -69,9 +83,14 @@ type LifecycleState = "starting" | "running" | "lost";
  * context restores keep the adapted quality. It resets only when the stage unmounts (motion Off,
  * Save-Data), and is then re-learned from the tier defaults.
  */
-export default function Stage({ agent, plan, onUnavailable }: StageProps) {
+export default function Stage({ agent, plan, path = "/", onUnavailable }: StageProps) {
   const settings = settingsForTier(plan.tier);
   const rootRef = useRef<HTMLDivElement>(null);
+  /**
+   * The one cursor-interaction substrate (ADR-004): written by the ambient field (the only pointer
+   * listener and flow simulation), sampled by every layer. A stable mutable object (ADR-007).
+   */
+  const [interaction] = useState(() => createInteraction(ambientLook.cursor.radius));
   const [lifecycle, setLifecycle] = useState<LifecycleState>("starting");
   const [quality, setQuality] = useState<Quality>(FULL_QUALITY);
   const onQualityStep = useCallback((next: Quality) => setQuality((q) => lowerOf(q, next)), []);
@@ -167,6 +186,7 @@ export default function Stage({ agent, plan, onUnavailable }: StageProps) {
         dpr={dpr}
         frameloop={frameloop}
         gl={GL_OPTIONS}
+        camera={CAMERA}
         flat
         linear
         onCreated={onCreated}
@@ -180,6 +200,17 @@ export default function Stage({ agent, plan, onUnavailable }: StageProps) {
           pointerEffects={plan.pointerEffects}
           statsRef={rootRef}
           onFirstFrame={onFirstFrame}
+          interaction={interaction}
+        />
+        <NexAvatar
+          key={`nex-${generation}`}
+          particles={settings.nex.particles}
+          particleShare={quality.particleShare}
+          glowLayer={settings.nex.glowLayer}
+          motion={plan.motion}
+          interaction={interaction}
+          statsRef={rootRef}
+          path={path}
         />
       </Canvas>
     </div>

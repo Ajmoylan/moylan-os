@@ -1,6 +1,6 @@
 # MOYLAN//OS — Architecture
 
-**Status:** v0.7 · 8 November 2026 · Milestone 1 and Milestone 2.1 complete and reviewed; Milestone 2.2 (first live WebGL environment) implemented, visual direction approved, independent-review findings remediated (§18); ADR-004 and ADR-007 accepted
+**Status:** v0.8 · 8 November 2026 · Milestone 1 and Milestone 2.1 complete and reviewed; Milestone 2.2 (first live WebGL environment) complete (§18); Milestone 2.3 (NEX avatar on the homepage) implemented, homepage appearance approved, independent-review findings remediated, awaiting verification (§19); ADR-004 and ADR-007 accepted
 **Sources:** master plan v1.0 (PDF + Apple Notes text) and blueprint illustration in `docs/references/` (kept locally; not published in the repository).
 **Companion documents:** [`DESIGN-BRIEF.md`](DESIGN-BRIEF.md) · [`AGENT-PROFILES.md`](AGENT-PROFILES.md) · [`SECURITY.md`](SECURITY.md) · [`PRIVACY-COMPLIANCE.md`](PRIVACY-COMPLIANCE.md)
 
@@ -206,6 +206,8 @@ Because every shape has the same `N`, a **morph** is a GPU interpolation between
 
 Shape generators are **pure and seeded**: deterministic, unit-testable, and run once per tier (in a Web Worker if they exceed ~4ms).
 
+**Implemented for NEX (Milestone 2.3, `src/experience/nex/`).** The NEX generator (`shape.ts`) returns `positions` (N × 3), `orbits` (N × 1: role × 32 + orbit-frame index) and `seeds` (N × 4: phase, speed, size, intensity). Rings and filaments are *orbit frames*: a small uniform table of rotations (21 for NEX: halo, core, nine rings, ten filaments) updated once per frame on the CPU, so whole rings spin on the GPU with no buffer uploads. Particles are shuffled within each role and interleaved in role-coherent blocks of 32 in proportion, so any prefix is a representative sample (the adaptive-quality draw range thins every layer evenly) while GPU warps run one role's shader branch. A future morph pairs particle *i* of one agent with particle *i* of the next; the arrival animation already blends each particle from a scattered start (derived from its seeds in the shader) to its target with the per-particle stagger and mid-flight swirl described above. The approved form's parameters (`params.ts`) were extracted from a reference model designed with Higgsfield and re-proportioned into a sphere; the model file itself is not shipped or loaded (§19).
+
 ### 6.2 Why this approach
 
 - **Genuinely interactive:** every particle is GPU-driven and responds to the cursor, idle animation and morph state every frame. These aren't pre-rendered videos or sprites.
@@ -216,7 +218,7 @@ Shape generators are **pure and seeded**: deterministic, unit-testable, and run 
 ### 6.3 Particle rendering
 
 - `THREE.Points` with a custom `ShaderMaterial`: soft round sprites, additive blending, depth-write off, size attenuation, an intensity-to-HDR mapping so cores can feed bloom on the high tier.
-- **Fake glow on lower tiers:** radial falloff in the fragment shader plus a large, faint duplicate "halo" point layer gives most of the bloom look at a fraction of the cost.
+- **Fake glow on lower tiers:** radial falloff in the fragment shader plus a large, faint duplicate "halo" point layer gives most of the bloom look at a fraction of the cost. **Implemented for NEX (Milestone 2.3):** the duplicate glow layer is drawn on tier 3. It draws the first third of NEX's particles from the same GPU buffers (a representative prefix), keeps only the core, the beads and ring particles lit by an energy pulse (×3.2 size, alpha scaled to the subset) and fades in once the arrival is complete. A real bloom pass is not yet affordable within the 3D budget (§9.3).
 - Lines (filaments, synapses, network edges) use `LineSegments` with the **same displacement function** in their vertex shader as the points they connect. Lines stay attached to moving particles with no CPU updates.
 
 ---
@@ -238,6 +240,8 @@ Each frame, three simple passes:
 - **No pressure projection in Milestone 2:** no divergence pass and no Jacobi solver. A stable-fluids upgrade would need its own ADR, with performance evidence, after M2.
 - **Render-target format fallback:** half-float → RGBA8 (biased encoding) → analytic pointer falloff with no render target (§9.4).
 - **Reduced motion:** when the effective motion mode is `reduced` or `off`, the flow map is **not allocated**, pointer listeners for displacement are **not attached**, and no pointer-driven displacement occurs. Switching to reduced motion at runtime disposes the render targets and detaches the listeners; switching back re-creates them.
+
+**Shared interface (Milestone 2.3):** `flow/interaction.ts` makes the substrate consumable by every layer: one mutable `StageInteraction` (mode, flow texture, analytic pointer and velocity) written by its owner, copied into each consumer's uniforms with `syncInteraction()` and sampled with the shared GLSL `sampleFlow()`. The ambient field and NEX both use it (§19).
 
 **Implementation (Milestone 2.2):** `src/experience/flow/FlowField.ts` is independent of React: one oversized-triangle pass does advect → dissipate → inject, ping-ponging two targets. `policy.ts` holds the pure fallback order and `dissipationFor(d, Δt) = pow(d, clamp(Δt, 0, 0.1)·60)`. Each format is validated once per renderer by `flow/probe.ts` (§9.4: render, sample, filter and read back), then the two full-size targets are checked for framebuffer completeness (half-float needs `EXT_color_buffer_half_float` or `EXT_color_buffer_float`). RGBA8 encodes velocity around 0.5 within ±8 NDC/s, with a dead zone so quantisation can't leave a permanent drift. Particles sample the field at their screen position and are displaced by it, so they ripple away from the cursor and settle back as it dissipates. The stage publishes the chosen format as `data-stage-flow`.
 
@@ -308,9 +312,9 @@ Nothing waits on the 3D chunk. If it fails to load, throws, or WebGL is unavaila
 | Tier | Trigger (initial plan, local signals only) | AgentCore N | Ambient | Flow map | DPR cap | PostFX |
 |---|---|---|---|---|---|---|
 | **0 Static** | Effective motion `off`, Save-Data, no WebGL2, or software rendering (`failIfMajorPerformanceCaveat`) | n/a | n/a | n/a | n/a | CSS + SVG poster |
-| **1 Low** | Effective motion `reduced` (§10), ≤ 2 GB device memory or ≤ 2 cores | ~12k | ~2k | 64² (none when motion is reduced) | 1.0 | none (shader glow) |
-| **2 Medium** | Coarse pointer (touch) or ≤ 4 GB device memory | ~30k | ~6k | 128² | 1.5 | none |
-| **3 High** | Everything else (including browsers that don't expose memory/cores) | ~60–80k | ~12k | 256² | 2.0 | bloom (mipmap blur) |
+| **1 Low** | Effective motion `reduced` (§10), ≤ 2 GB device memory or ≤ 2 cores | 12k | ~2k | 64² (none when motion is reduced) | 1.0 | none (shader glow) |
+| **2 Medium** | Coarse pointer (touch) or ≤ 4 GB device memory | 30k | ~6k | 128² | 1.5 | none |
+| **3 High** | Everything else (including browsers that don't expose memory/cores) | 30k (the approved NEX density; tier 3 adds the glow layer and DPR 2) | ~12k | 256² | 2.0 | NEX duplicate glow layer (bloom pass pending a budget decision, §9.3) |
 
 - **Runtime adaptation (implemented in Milestone 2.2, step-down only):** a frame-time monitor (one-second windows) asks for a step after two consecutive windows over 24 ms: first the DPR (−0.5 per step, not below 1), then the share of particles drawn (halved, not below 25%). It never steps back up automatically; stepping up cautiously after a sustained recovery is planned. The adapted values are the stage's single source of truth for quality (`performance/quality.ts`, held as low-frequency React state in `Stage`): the Canvas `dpr` and the geometry draw range are derived from them on every render, so route, visibility and motion changes, tier changes and context restores keep the adapted quality. It resets only when the stage unmounts (motion Off, Save-Data) and is then re-learned.
 - **Backing-pixel limit (implemented in the Milestone 2.2 review):** independently of the DPR cap, the drawing buffer is kept within a per-tier pixel budget (tier 1: 1920×1080, tier 2: 2560×1440, tier 3: 3840×2160 backing pixels). On larger viewports the DPR is lowered to fit (floored to 0.125 steps, minimum 0.5). The minimum DPR takes precedence over the pixel target: on exceptionally large viewports, above four times the tier's pixel budget in CSS pixels (for example beyond 7680×4320 CSS pixels on tier 3), DPR 0.5 still exceeds the target and the buffer is allowed to, bounded at a quarter of the CSS pixel area. A 27-inch 5K display renders at DPR 1.5 rather than 2 (≈ 33 MB instead of ≈ 59 MB of colour buffer), while typical laptops and phones keep their full tier cap. Points are sized by DPR, so the look is unchanged apart from sharpness. Every later full-screen pass (bloom, NEX effects) inherits this bound.
@@ -325,23 +329,23 @@ Two separate JavaScript budgets, **enforced on every build** by `scripts/postbui
 | Budget | Limit (gzip) | Measured (Milestone 1) | How it's measured |
 |---|---|---|---|
 | **Initial application JS**, per prerendered page | ≤ 125 KB | ≈ 120.7 KB (home, Milestone 2.2) | Every script the page's HTML references, plus their static-import closure |
-| **Lazy 3D stage** | ≤ 250 KB | ≈ 240.4 KB (Milestone 2.2 after review: Three.js + R3F + the ambient field, flow map, probe and quality control) | The `Stage-*.js` chunk plus everything reachable from it through static **and nested dynamic** `import()`s, minus chunks already in any page's initial set |
+| **Lazy 3D stage** | ≤ 250 KB | ≈ 248.7 KB (Milestone 2.3 after review: Three.js + R3F + the ambient field, shared flow map and interaction interface, probe, quality control and NEX; was 240.4 KB) | The `Stage-*.js` chunk plus everything reachable from it through static **and nested dynamic** `import()`s, minus chunks already in any page's initial set |
 | Stage isolation | Must be 0 | 0 | The build fails if any page's initial set contains the stage chunk |
 
 **Nested 3D chunks:** if the 3D layer is later split further (e.g. post-processing or a shape-generation worker loaded on demand), those chunks are found by following dynamic imports from the stage chunk and count towards the 3D budget, not the initial one. If the 3D layer grows past 250 KB in total, sub-budgets per lazy chunk (e.g. core stage vs. tier-3 post-processing) will be introduced rather than raising the cap silently. Web Worker files emitted by Vite (`new Worker(new URL(...), { type: "module" })`) aren't reached through `import()`; when the first worker is added, the budget script will be extended to include `*.worker-*.js` assets in the 3D total.
 
 The 125 KB initial budget was revised from 90 KB because the React 19 + React Router framework baseline alone is ≈ 110 KB. That leaves little headroom: new initial-bundle dependencies need justification.
 
-**Headroom and the NEX allocation (proposed, Milestone 2.2 review).** Both budgets stay as they are; raising either needs explicit approval.
+**Headroom and the NEX allocation (historical: the Milestone 2.2 planning allocation, made in that milestone's review before NEX existed).** Both budgets stay as they are; raising either needs explicit approval. The figures in the next two tables are as planned then; the measured Milestone 2.3 result follows them.
 
 | | Budget | Now | Headroom |
 |---|---|---|---|
-| Initial JS (largest page) | 125 KB | 120.7 KB | ≈ 4.3 KB |
-| Lazy 3D closure | 250 KB | 240.4 KB | ≈ 9.6 KB |
+| Initial JS (largest page) | 125 KB | 120.8 KB (Milestone 2.3) | ≈ 4.2 KB |
+| Lazy 3D closure | 250 KB | 248.7 KB (Milestone 2.3 after review) | ≈ 1.3 KB |
 
-The 3D figure is the **whole lazy dependency closure**: the stage chunk plus every chunk reachable from it through static and dynamic imports that no page loads up front (today the zustand and scheduler helpers R3F needs). Of the 240.4 KB, the project's own stage code (stage, ambient field, flow map, probe, quality control and shaders) is ≈ 7 KB; the rest is Three.js and R3F, which tree-shake poorly. Using more Three.js classes therefore costs little, but any new package or Three.js addon (`three/examples/jsm/...`) counts in full.
+The 3D figure is the **whole lazy dependency closure**: the stage chunk plus every chunk reachable from it through static and dynamic imports that no page loads up front. Since Milestone 2.3 that is the single `Stage-*.js` chunk: the small runtime chunks it shares (scheduler, zustand's vanilla store, the JSX runtime and the bundler runtime) are already in every page's initial set, so they are counted once, as initial JS. Of the 248.7 KB, the project's own stage code (stage, ambient field, flow map and interaction interface, probe, quality control, NEX and shaders) is ≈ 15 KB; the rest is Three.js and R3F, which tree-shake poorly. Using more Three.js classes therefore costs little, but any new package or Three.js addon (`three/examples/jsm/...`) counts in full.
 
-Proposed allocation for the NEX core (Milestone 3), within the existing 9.6 KB:
+Milestone 2.2 planning allocation for NEX (then expected in Milestone 3, delivered in Milestone 2.3), within the 9.6 KB headroom of the time:
 
 | Part | Allocation (gzip) | Notes |
 |---|---|---|
@@ -349,6 +353,10 @@ Proposed allocation for the NEX core (Milestone 3), within the existing 9.6 KB:
 | Shape generation (procedural NEX geometry, deterministic like `generateParticles`) | ≤ 2.5 KB | Code, not model files; binary point clouds would need their own asset budget |
 | NEX shaders (GLSL strings) | ≤ 2.0 KB | Shares noise/flow-sampling chunks with the ambient shaders |
 | Reserve for fixes | ≈ 1.6 KB | Not to be spent on features |
+
+**Measured (Milestone 2.3 after review):** NEX and its supporting changes cost ≈ 8.3 KB gz in the production closure: ≈ 7.7 KB for the component, generator, parameters, motion, placement and shaders as first integrated, plus ≈ 0.6 KB from the review fixes (the shared interaction interface and the anchor tracker). That is ≈ 0.3 KB over the 8.0 KB feature allocation, taken from the 1.6 KB reserve for fixes; ≈ 1.3 KB of 3D headroom remains. Nothing for NEX went into the initial bundle (+0.1 KB from the homepage markup).
+
+**Lazy sub-chunks are not exempt.** The budget script counts every chunk reachable from the stage chunk, static or dynamic, towards the same 250 KB total, and that is the intended rule: a visitor who reaches the chunk downloads it. Splitting code into a lazily loaded sub-chunk therefore does not create headroom. A real bloom pass was measured separately: `EffectComposer` + `RenderPass` + `UnrealBloomPass` alone are ≈ 4.3 KB gz before any integration code, more than the remaining headroom. Bloom, the four other agents' shapes and the morph controller all need an explicit budget decision (a raised total, or per-chunk budgets with a documented total), made with measurements before they are built.
 
 Nothing for NEX goes into the initial bundle: the ≈ 4.3 KB initial headroom is kept for the route/agent wiring the DOM already has. **Not affordable without a new decision:** GSAP or any animation library inside the stage, post-processing (bloom) and the other four agents' shapes. These need either a separately budgeted lazy sub-chunk (§9.3 nested chunks) or an approved budget change, decided with measurements before they are built.
 
@@ -607,8 +615,8 @@ Aligned with the master plan's phases. Each milestone ends with something demons
 | **2 · M1 Static foundation** | Accessible, secure, prerendered NEX homepage + placeholder environments (§16) | ✅ Complete: approved after two independent reviews |
 | **2 · M2.1 Runtime motion preferences** | Live `prefers-reduced-motion` handling, the motion preference policy and store, the visible motion control, stage-plan integration, tests (§10, §17) | ✅ Implemented, awaiting review |
 | **2 · M2.2 First living environment** | Three.js/R3F stage, ambient GPU particle field, shared FlowField (ADR-004), frame-time adaptation (step-down), context loss/restore, runtime Save-Data (§18) | ✅ Implemented; visual direction approved; review findings remediated, awaiting independent verification |
-| **2 · M2.3+** | Visual refinement from the M2.2 review, then the NEX core (M3) | After M2.2 review |
-| **2 · M3 NEX core** | AgentCore particle system with the NEX shape, arrival and idle animation | After M2 review |
+| **2 · M2.3 NEX avatar** | The approved NEX form (V3) in the live stage on the homepage: procedural shape, arrival, idle, cursor response, fallbacks, tests (§19). Brings forward the NEX part of M3 | ✅ Implemented; appearance approved; review findings remediated, awaiting verification |
+| **2 · M3 AgentCore** | Generalise the NEX layer into the shared AgentCore (palette, shape swap, morph timeline) | After M2.3 review |
 | **2 · M4 Prototype polish** | Pathway colour preview, fallbacks, performance tuning, Lighthouse | After M3 review |
 | **3 Agent world** | NEX → FORGE morph spike, then all specialists, transitions and environments | |
 | **4 Real content** | Accurate projects, CV, credentials, case studies (MDX) | |
@@ -731,7 +739,7 @@ Three.js / R3F, the GPU particle system, the flow map, GSAP motion, context-loss
 
 ### Known limitations
 
-- **3D budget headroom is about 9.6 KB.** Three.js's WebGL renderer can't be tree-shaken much. The NEX allocation in §9.3 fits within it; post-processing, GSAP in the stage or further agents need per-chunk sub-budgets or an approved change, not a silent increase.
+- **3D budget headroom is about 9.6 KB** (at the time; ≈ 1.3 KB after Milestone 2.3, §19). Three.js's WebGL renderer can't be tree-shaken much. The NEX allocation in §9.3 fits within it; post-processing, GSAP in the stage or further agents need per-chunk sub-budgets or an approved change, not a silent increase.
 - Adaptation only steps quality down and never back up automatically. A visit that hits a temporary slowdown (another heavy tab, a thermal dip) keeps the lower quality until the stage remounts (motion Off and on, or a reload). Stepping back up after a sustained recovery is planned.
 - Context restoration relies on Three.js re-creating GPU resources on the restored context, plus a full scene remount. Tested with `WEBGL_lose_context`; real driver resets on mobile GPUs are untested.
 - The WebGL tests run on whatever GPU the test machine has. On software rendering (SwiftShader) they still pass because the stub drops the performance caveat, but the frame-time figures above apply only to hardware rendering.
@@ -746,3 +754,68 @@ The visual direction was approved before the review and is unchanged: no shader,
 2. **Flow-target validation (strengthened).** Completeness checks are now backed by the render-and-sample probe described in §9.4, with state restoration and disposal on every path, and the half-float → RGBA8 → analytic order unchanged.
 3. **Backing-pixel limit (added)** and the **NEX budget allocation (proposed)**: §9.2 and §9.3.
 4. **Documentation corrected:** pointer data retention (PRIVACY-COMPLIANCE §4.4), context-loss tests and runtime Save-Data (§9.4), and step-down-only adaptation (§9.2).
+
+---
+
+## 19. Milestone 2.3: NEX on the homepage (implemented, appearance approved)
+
+**Goal:** the approved NEX form ("V3 · Spherical intelligence", chosen from an isolated local prototype) in the real homepage, inside the persistent stage, without new dependencies or budget changes.
+
+### Design source
+
+A reference model was designed with Higgsfield and inspected locally. Its *composition* was kept, not the model: nine orbital rings (band radii, emissive levels, tilts, spin speeds and directions), orbiting beads and hubs, the core size, breathing (5.5 % every ≈ 7.5 s) and sway (3° over ≈ 15 s). For V3 these were re-proportioned into a contained sphere: the outer ring 18 % smaller, the inner rings re-spaced towards one shell, the ring tilts relaxed towards an even spread, filaments moved out to the shell and the halo tightened. The resulting numbers are `src/experience/nex/params.ts` (≈ 2 KB of source); production never loads a mesh.
+
+**Local-only material (never committed or published):** the reference model lives in `docs/references/nex/` and the visual prototype used to choose V3 (with its model-inspection tooling) in `prototypes/nex/`. Both directories are listed in `.gitignore`. The prototype is a development aid only: it is not part of the application, its build, its type-check or its tests, and nothing in `src/` imports it. The build output contains no model file, no glTF loader and none of the reference model's editor metadata (checked during the Milestone 2.3 review).
+
+### Delivered
+
+- **`src/experience/nex/`:** `params.ts` (approved parameters), `shape.ts` (pure seeded generator, §6.1), `motion.ts` (orbit frames, breathing, sway), `anchor.ts` (event-driven anchor measurement), `placement.ts` (pure anchor maths), `shaders.ts` (GLSL; the approved look is built in as constants), `NexAvatar.tsx` (the R3F layer).
+- **One stage, one renderer:** NEX is a second layer in the existing canvas next to the ambient field, sharing the frame loop, the adapted quality state (DPR and particle share) and the context-loss remount. One perspective camera serves the 3D agents; the ambient field still draws in screen space.
+- **One cursor substrate (ADR-004):** `flow/interaction.ts` is the shared interface. The ambient field owns it: it attaches the only `PointerTracker`, runs the only `FlowField` simulation and writes the result (`mode`: half-float, RGBA8, analytic or none; the flow texture; the analytic pointer and velocity) into one mutable `StageInteraction` object owned by the Stage. Every consumer, the ambient field included, copies it into its uniforms with `syncInteraction()` and samples it in GLSL with the shared `sampleFlow()` (`FLOW_GLSL`), so flow-map decoding and the analytic fallback exist once. NEX samples it at each particle's screen position: the cursor's wake carries particles along (filaments and dust most, the core least) and makes them glow, and they settle as the flow dissipates. Under reduced or off motion the mode is `none` and every pointer uniform is zeroed. No extra listener, simulation or GPU pass.
+- **Layers:** particles (core, rings, beads, filaments, halo; one draw), ring hairlines (one `LineSegments` draw for all rings), a fresnel energy shell, a volumetric core-glow billboard, an atmosphere billboard and, on tier 3, the duplicate glow layer (§6.3). Additive, premultiplied, no depth buffer.
+- **Composition:** the homepage marks NEX's place with a layout-only element (`data-stage-anchor="nex"`, the hero figure). NEX is centred on it and its ring cage fills 88 % of the box's shorter side, and turned so its three-quarter view faces the camera. The box is measured only after something can have moved or resized it (`anchor.ts`: scroll, window resize, a `ResizeObserver` on the anchor and the page body for responsive reflow and enlarged text, web fonts loading, or a new anchor after navigation), and the placement is recomputed only when the box, viewport or field of view changed: no layout read or allocation on ordinary frames. Desktop: beside the hero text. Narrow screens: above the heading (`order-first`; the figure isn't focusable, so focus order is unchanged). Routes without the anchor fade NEX out and stop drawing it; returning replays the arrival.
+- **Poster:** the static emblem stays in the DOM with NEX's text equivalent and is cross-faded out with CSS only while the stage reports NEX drawn (`data-nex-state="visible"` on a running, static or paused stage). Lost context, Off, Save-Data, no WebGL2 or a failed stage leave it visible.
+- **Motion:** Full: arrival from drifting particles (2.4 s), living idle at the approved 0.7× pace, slow travelling pulses (no flashing: any one point brightens at most every ≈ 4 s), a cursor response through the shared flow map that settles over 1–2 s. Reduced: the fully formed NEX as one still frame on demand, no pointer, no arrival (also when motion is reduced during an arrival). Off: no canvas.
+- **ADR-007:** React renders `NexAvatar` only on tier, share, motion and route changes; time, placement, arrival, fade and pointer live in refs and shared uniform objects.
+- **Tests:** unit (`nex/nex.test.ts`: generator determinism, layout, composition, spherical bounds, even thinning, warp coherence; placement; orbit motion; `nex/anchor.test.ts`: measurement only after layout events, observer and listener cleanup; `flow/interaction.test.ts`: the shared interface on every flow path; `shaders.test.ts`: no undefined `smoothstep`), Stage wiring (`Stage.test.tsx`), home anchor and poster (`home.test.tsx`), and Playwright with a real renderer (`nex.spec.ts`: drawn at the anchor with the poster hidden, an exact draw-call count, one pointer listener and the shared flow on the half-float, RGBA8 and analytic paths, leaving and returning with its page, Off and Full, Reduced during the arrival, context loss and restore, scrolling, no anchor measurement while idle but re-measurement after scrolling and enlarged text, reduced motion, no WebGL2).
+
+### Measurements (Chromium on Apple silicon, production build)
+
+| Item | Value |
+|---|---|
+| Initial JS (largest page) | 120.8 KB gz (budget 125 KB) |
+| Lazy 3D closure | 248.7 KB gz (budget 250 KB); NEX and its review fixes ≈ 8.3 KB of it |
+| NEX particles | 30,000 on tiers 2 and 3 (the density of the approved prototype; tier 3 adds the glow layer over 10,000 of them), 12,000 on tier 1 / reduced |
+| Draw calls | Exactly 8 per frame for the whole stage on tier 3 (ambient particles, one flow pass, six NEX layers) and 7 on tier 2, asserted by counting WebGL draw calls per rendered frame |
+| Frame time | 8.3 ms (vsync-limited 120 Hz) at DPR 2, 1148 × 934, tier 3; worst frame over 3 s 9.4 ms |
+| Software rendering (CI, SwiftShader) | 61 fps for one page; ≈ 25 frames per second per page with six concurrent browsers (50 on pages without NEX) |
+| GPU memory (estimate) | NEX attributes ≈ 0.96 MB at 30k (8 floats per particle) plus small overlay buffers |
+
+### Known limitations and risks
+
+- **No real bloom yet** (budget): tier 3 uses the duplicate glow layer, which approximates the prototype's bloom around the core, beads and pulses but is softer and smaller. A bloom sub-chunk needs a budget decision (§9.3).
+- **3D headroom is ≈ 1.3 KB.** Lazy sub-chunks count towards the same total (§9.3), so the other four agents' shapes and the morph controller need an explicit budget decision before they are built.
+- **Ring hairlines are aliased** (the canvas has no antialiasing, as in Milestone 2.2); at DPR ≥ 1.5 they read as fine lines, at DPR 1 they are slightly stepped.
+- **Licence:** the parameters derive from a Higgsfield-generated model; its commercial terms must be confirmed before public launch (PRIVACY-COMPLIANCE §11).
+- **Uniform budget:** 21 orbit frames use ≈ 84 of the 256 vertex uniform vectors WebGL2 guarantees; a morph between two agents with separate frame tables would roughly double that.
+- **Density, not the earlier estimate:** NEX uses 30k particles on tier 3 rather than the 60–80k first estimated in §9.2: the approved look was designed at 30k, and with additive light a denser form is brighter, not just finer. 60k was tried and read visibly denser than the approved prototype; it also halved the frame rate of the software-rendered CI browsers under parallel load.
+- **Software rendering:** real visitors on software rendering get the static design (`failIfMajorPerformanceCaveat`), but the end-to-end suite runs the real renderer on SwiftShader. NEX's particle draw is the dominant cost there (≈ 25 frames per second per browser under full parallel load). The render-loop checks therefore test lifecycle, not speed: a running loop must deliver 20 more frames within 10 s, a paused one at most 3 in a second.
+- **Real mobile GPUs are unmeasured:** tier 2 was checked in Chromium's mobile emulation on a desktop GPU only. The atmosphere and core-glow billboards cover a large share of a phone screen and are not reduced by the particle-share step-down; on-device profiling is planned before launch.
+
+### Remediation after independent review
+
+The approved V3 look, composition and motion are unchanged.
+
+1. **NEX used a private pointer model (fixed).** Root cause: NEX shared the ambient field's `PointerTracker` sample but computed its own analytic attraction, so the flow map was not the single cursor substrate ADR-004 requires. Fix: the shared `StageInteraction` interface and `FLOW_GLSL` (above); NEX samples the same flow map, or the same analytic fallback, at each particle's screen position, and its private pointer uniforms and the CPU ray maths were removed. Tests: `flow/interaction.test.ts` and the flow-path tests in `nex.spec.ts`.
+2. **Undefined `smoothstep` (fixed).** Root cause: `smoothstep(edge0, edge1, x)` with `edge0 > edge1` was used for inverse ramps (the ambient field's top and bottom vignette and NEX's core occlusion); GLSL leaves the result undefined, although common drivers return the expected mirrored ramp. Fix: `1.0 - smoothstep(low, high, x)`, which is the intended value exactly. Test: `shaders.test.ts` rejects reversed or equal literal edges anywhere in `src/experience/` (it fails on the original ambient shader).
+3. **Per-frame layout reads and allocations (fixed).** Root cause: `NexAvatar` called `getBoundingClientRect()` and allocated a placement object and a publishing closure on every frame. Fix: `anchor.ts` (event-driven measurement with cleanup), a preallocated placement recomputed only on change, and a module-level attribute publisher. Tests: `nex/anchor.test.ts` and the anchor-measurement test in `nex.spec.ts`.
+4. **Reduced motion during the arrival (fixed, found while reviewing).** Switching to Reduced during the 2.4 s arrival left the still frame half-assembled, because the arrival clock only advanced in Full motion. NEX is now always fully formed without full motion (`nex.spec.ts`).
+5. **Repository hygiene:** `prototypes/` added to `.gitignore` (local-only policy above).
+6. **Tests made deterministic:** exact draw calls per frame instead of "< 15", and lifecycle-based render-loop checks instead of a fixed frame rate under load (`webgl.spec.ts`).
+
+### Future cleanup (non-blocking)
+
+Recorded in the final Milestone 2.3 review; not implemented in this milestone.
+
+- **`NexMotion.update()` allocates a closure per frame:** the `cycle` helper is created on every call. Hoist it to a module-level function (or inline it) so the render loop allocates nothing.
+- **Anchor font-load coverage:** `AnchorTracker` re-measures on the `FontFaceSet` `loadingdone` event, but no test dispatches that event directly. Add a unit test with a stubbed `document.fonts` that asserts a re-measurement and that `detach()` removes the listener.

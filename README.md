@@ -14,7 +14,7 @@ MOYLAN//OS is the portfolio of Alex Moylan, designed as a personal operating sys
 
 The site is meant to be a working engineering demonstration: cinematic where it adds value, and fast, accessible, secure and private underneath.
 
-> **Status: Milestone 2.2 implemented (first living WebGL environment).** A GPU particle field with a pointer flow map now runs behind the content where devices and motion settings allow; the static, accessible foundation remains the permanent fallback. The NEX avatar and the agent system (one morphing GPU particle system shared by all five agents) come next. See [docs/ARCHITECTURE.md §15](docs/ARCHITECTURE.md#15-implementation-plan).
+> **Status: Milestone 2.3 implemented (NEX on the homepage), awaiting review.** NEX, the host, now appears as a living GPU particle sphere beside the homepage hero, in the same WebGL stage as the ambient particle field, where devices and motion settings allow; the static, accessible foundation remains the permanent fallback. The shared morphing agent system for all five agents comes next. See [docs/ARCHITECTURE.md §15](docs/ARCHITECTURE.md#15-implementation-plan).
 
 ## Features
 

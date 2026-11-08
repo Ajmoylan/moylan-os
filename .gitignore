@@ -29,6 +29,10 @@ local.settings.json
 # (available for development, not published). See README.md.
 docs/references/
 
+# Local-only visual prototypes and experiments (e.g. the NEX design study); never published.
+# Production code lives in src/; see docs/ARCHITECTURE.md §19.
+prototypes/
+
 # Local development-tool configuration and state (kept on each machine, never published)
 .claude/
 

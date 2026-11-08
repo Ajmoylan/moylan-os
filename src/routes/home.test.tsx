@@ -42,6 +42,16 @@ describe("Home (NEX)", () => {
     expect(screen.getByRole("img", { name: /NEX, the MOYLAN\/\/OS host/ })).toBeInTheDocument();
   });
 
+  it("marks NEX's place for the stage and keeps the emblem as its static poster", () => {
+    const { container } = renderHome();
+    const anchor = container.querySelector('[data-stage-anchor="nex"]');
+    expect(anchor).not.toBeNull();
+    const poster = anchor?.querySelector("[data-nex-poster]");
+    expect(poster?.querySelector('[role="img"]')).toHaveAccessibleName(
+      /NEX, the MOYLAN\/\/OS host/,
+    );
+  });
+
   it("never renders inline style attributes (CSP)", () => {
     const { container } = renderHome();
     expect(container.querySelector("[style]")).toBeNull();

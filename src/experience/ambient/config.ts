@@ -1,3 +1,4 @@
+import { Vector3 } from "three";
 import type { QualityTier } from "../capabilities";
 
 /**
@@ -18,6 +19,11 @@ export interface TierSettings {
    * HiDPI displays the DPR is lowered until the buffer fits, independently of the DPR cap.
    */
   maxPixels: number;
+  /**
+   * NEX (Milestone 2.3): particle count N (the fixed AgentCore count for the tier) and whether the
+   * faint duplicate glow layer (ARCHITECTURE §6.3 "fake glow", in place of a bloom pass) is drawn.
+   */
+  nex: { particles: number; glowLayer: boolean };
 }
 
 /**
@@ -25,9 +31,27 @@ export interface TierSettings {
  * 4K-equivalent buffers, so typical laptops and phones keep their full DPR cap.
  */
 export const tierSettings: Record<Exclude<QualityTier, 0>, TierSettings> = {
-  1: { particles: 2_000, dprCap: 1, flowSize: 64, maxPixels: 1920 * 1080 },
-  2: { particles: 6_000, dprCap: 1.5, flowSize: 128, maxPixels: 2560 * 1440 },
-  3: { particles: 12_000, dprCap: 2, flowSize: 256, maxPixels: 3840 * 2160 },
+  1: {
+    particles: 2_000,
+    dprCap: 1,
+    flowSize: 64,
+    maxPixels: 1920 * 1080,
+    nex: { particles: 12_000, glowLayer: false },
+  },
+  2: {
+    particles: 6_000,
+    dprCap: 1.5,
+    flowSize: 128,
+    maxPixels: 2560 * 1440,
+    nex: { particles: 30_000, glowLayer: false },
+  },
+  3: {
+    particles: 12_000,
+    dprCap: 2,
+    flowSize: 256,
+    maxPixels: 3840 * 2160,
+    nex: { particles: 30_000, glowLayer: true },
+  },
 };
 
 export function settingsForTier(tier: QualityTier): TierSettings {
@@ -39,6 +63,12 @@ export interface Palette {
   base: string;
   accent: string;
   hot: string;
+}
+
+/** sRGB hex → raw RGB vector (bypasses colour management: shaders output these values as-is). */
+export function rgb(hex: string): Vector3 {
+  const value = Number.parseInt(hex.slice(1), 16);
+  return new Vector3(((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255);
 }
 
 /** NEX cyan/teal (DESIGN-BRIEF §2): nex-deep, nex and a pale cyan highlight. */

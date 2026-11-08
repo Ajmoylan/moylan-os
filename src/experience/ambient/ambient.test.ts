@@ -3,11 +3,29 @@ import { ambientLook, settingsForTier, tierSettings } from "./config";
 import { SPAN_Y, WRAP_X, createRandom, generateParticles } from "./particles";
 
 describe("tier settings (ARCHITECTURE §9.2)", () => {
-  it("follow the ambient counts, DPR caps, flow-map sizes and pixel limits of the tier table", () => {
+  it("follow the ambient and NEX counts, DPR caps, flow-map sizes and pixel limits of the tier table", () => {
     expect(tierSettings).toEqual({
-      1: { particles: 2_000, dprCap: 1, flowSize: 64, maxPixels: 1920 * 1080 },
-      2: { particles: 6_000, dprCap: 1.5, flowSize: 128, maxPixels: 2560 * 1440 },
-      3: { particles: 12_000, dprCap: 2, flowSize: 256, maxPixels: 3840 * 2160 },
+      1: {
+        particles: 2_000,
+        dprCap: 1,
+        flowSize: 64,
+        maxPixels: 1920 * 1080,
+        nex: { particles: 12_000, glowLayer: false },
+      },
+      2: {
+        particles: 6_000,
+        dprCap: 1.5,
+        flowSize: 128,
+        maxPixels: 2560 * 1440,
+        nex: { particles: 30_000, glowLayer: false },
+      },
+      3: {
+        particles: 12_000,
+        dprCap: 2,
+        flowSize: 256,
+        maxPixels: 3840 * 2160,
+        nex: { particles: 30_000, glowLayer: true },
+      },
     });
   });
 

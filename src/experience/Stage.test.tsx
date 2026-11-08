@@ -2,6 +2,7 @@ import { act, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AmbientFieldProps } from "./ambient/AmbientField";
+import type { NexAvatarProps } from "./nex/NexAvatar";
 import type { StagePlan } from "./capabilities";
 import { MIN_PARTICLE_SHARE, type Quality } from "./performance/quality";
 import Stage from "./Stage";
@@ -17,7 +18,11 @@ import Stage from "./Stage";
 
 const seen = vi.hoisted(() => ({
   canvas: [] as { dpr: [number, number] }[],
-  field: [] as Pick<AmbientFieldProps, "settings" | "particleShare" | "onQualityStep">[],
+  field: [] as Pick<
+    AmbientFieldProps,
+    "settings" | "particleShare" | "onQualityStep" | "interaction"
+  >[],
+  nex: [] as NexAvatarProps[],
 }));
 
 vi.mock("@react-three/fiber", () => ({
@@ -34,11 +39,19 @@ vi.mock("./ambient/AmbientField", () => ({
   },
 }));
 
+vi.mock("./nex/NexAvatar", () => ({
+  NexAvatar: (props: NexAvatarProps) => {
+    seen.nex.push(props);
+    return null;
+  },
+}));
+
 const full: StagePlan = { tier: 3, motion: "full", pointerEffects: true, reason: "capable" };
 const reduced: StagePlan = { tier: 1, motion: "reduced", pointerEffects: false, reason: "capable" };
 
 const lastCanvas = () => seen.canvas.at(-1)!;
 const lastField = () => seen.field.at(-1)!;
+const lastNex = () => seen.nex.at(-1)!;
 const step = (next: Quality) => act(() => lastField().onQualityStep(next));
 
 function setViewport(width: number, height: number) {
@@ -50,6 +63,7 @@ function setViewport(width: number, height: number) {
 beforeEach(() => {
   seen.canvas.length = 0;
   seen.field.length = 0;
+  seen.nex.length = 0;
   setViewport(1280, 720);
 });
 
@@ -116,5 +130,39 @@ describe("Stage adaptive quality", () => {
     expect(lastCanvas().dpr).toEqual([1, 1]);
     setViewport(1280, 720); // a smaller window never undoes the adaptation
     expect(lastCanvas().dpr).toEqual([1, 1]);
+  });
+});
+
+describe("Stage NEX layer", () => {
+  it("draws NEX in the same canvas with the tier's particle count and glow layer", () => {
+    const { rerender } = render(<Stage agent="nex" plan={full} path="/" />);
+    expect(lastNex().particles).toBe(30_000);
+    expect(lastNex().glowLayer).toBe(true);
+    expect(lastNex().motion).toBe("full");
+    expect(lastNex().path).toBe("/");
+
+    rerender(<Stage agent="nex" plan={{ ...full, tier: 2 }} path="/" />);
+    expect(lastNex().particles).toBe(30_000);
+    expect(lastNex().glowLayer).toBe(false);
+
+    rerender(<Stage agent="nex" plan={reduced} path="/" />);
+    expect(lastNex().particles).toBe(12_000);
+    expect(lastNex().glowLayer).toBe(false);
+    expect(lastNex().motion).toBe("reduced");
+  });
+
+  it("shares the adapted particle share and the ambient field's pointer substrate", () => {
+    render(<Stage agent="nex" plan={full} path="/" />);
+    // The same interaction object: the field writes it, NEX samples it (one substrate, ADR-004).
+    expect(lastNex().interaction).toBe(lastField().interaction);
+    step({ dprCap: 1.5, particleShare: 0.5 });
+    expect(lastNex().particleShare).toBe(0.5);
+    expect(lastField().particleShare).toBe(0.5);
+  });
+
+  it("passes route changes on, so NEX can follow (or leave) its page anchor", () => {
+    const { rerender } = render(<Stage agent="nex" plan={full} path="/" />);
+    rerender(<Stage agent="forge" plan={full} path="/engineering" />);
+    expect(lastNex().path).toBe("/engineering");
   });
 });
