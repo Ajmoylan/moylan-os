@@ -86,8 +86,8 @@ The original master plan and visual references live in `docs/references/`. They'
 
 - **Feature branches and protected `main`:** changes land through pull requests that must pass CI (formatting, lint, type checks, unit tests, build-output and budget checks, end-to-end and accessibility tests), CodeQL and dependency review.
 - **Recorded decisions:** architectural choices are documented as ADRs in [docs/ARCHITECTURE.md §14](docs/ARCHITECTURE.md#14-architecture-decision-records), and each milestone is independently reviewed before the next one begins.
-- **Supply-chain hygiene:** exact dependency versions, SHA-pinned GitHub Actions, and Dependabot updates with a cooldown period.
-- **Authorship:** developed by Alex Moylan, using AI-assisted tooling for implementation support and code review. Alex directs the design and architecture and reviews every change.
+- **Testing on every change:** unit and component tests, plus end-to-end, accessibility and security-header tests against the production build with its real headers, run on every pull request.
+- **Maintenance:** exact dependency versions, SHA-pinned GitHub Actions, and weekly Dependabot updates with a cooldown period. Major upgrades that need migration work are deferred deliberately and documented ([docs/ARCHITECTURE.md §2](docs/ARCHITECTURE.md#deferred-major-upgrades)).
 
 ## Security
 

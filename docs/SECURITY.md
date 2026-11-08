@@ -206,6 +206,7 @@ upgrade-insecure-requests
 - **Minimal dependency policy:** each new runtime dependency needs a stated reason (in the PR description) and a check of maintenance status, licence and size.
 - CI runs two audits and fails on high/critical advisories: `npm run audit:prod` (production dependencies) and `npm run audit:all` (the full tree, including build and test tooling, which runs with developer and CI privileges). Moderate dev-only advisories are fixed with scoped `overrides` where safe (e.g. `minimatch` under `typescript-eslint`) and otherwise tracked through Dependabot.
 - **Dependabot** (`.github/dependabot.yml`): weekly version updates for `npm` and `github-actions`, grouped to limit PR noise, with a **cooldown** so brand-new releases aren't adopted on day one (reducing exposure to hijacked releases). Security updates are not subject to the cooldown.
+- **Deferred majors:** major-version updates are ignored for exactly four packages (`eslint`, `@eslint/js`, `@types/node`, `@react-router/node`) for compatibility reasons recorded in ARCHITECTURE §2. The rules are scoped to `version-update:semver-major`, so minor and patch releases (including security fixes on the current major) still arrive. Dependabot alerts and both CI audits remain the backstop if a fix ever exists only in a new major. No broad or wildcard ignore rules are used.
 
 ### 10.2 GitHub Actions hardening
 

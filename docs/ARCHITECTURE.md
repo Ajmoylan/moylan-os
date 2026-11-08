@@ -54,6 +54,16 @@ Versions as installed for Milestone 1 (Node.js 22 LTS locally and in CI).
 - **WebGPU + TSL.** Three's WebGPU renderer (with WebGL2 fallback) and compute shaders are attractive for particles. However, the plan specifies GLSL, our particle budgets fit comfortably in WebGL2, and the WebGL post-processing/R3F ecosystem is more mature. Revisit after Phase 3. Keeping shader logic modular keeps a later port feasible.
 - **XState.** The transition state machine is small enough to implement as a typed reducer in the store.
 
+### Deferred major upgrades
+
+Dependabot ignores **major-version updates only** for the packages below (`.github/dependabot.yml`). Their minor and patch releases still arrive automatically. Dependabot alerts and the CI `npm audit` gates still report any vulnerability, including one fixed only in a new major, so a security issue can't be silently skipped. Each upgrade is a deliberate decision, made in its own PR with the full check suite.
+
+| Package | Held at | Why deferred | Revisit when |
+|---|---|---|---|
+| `eslint`, `@eslint/js` | 9.x | `eslint-plugin-jsx-a11y` (our strict accessibility linting) supports ESLint only up to 9 | jsx-a11y releases ESLint 10 support |
+| `@react-router/node` | 7.x | Must match `react-router` / `@react-router/dev` 7; v8 is a framework migration that needs Node ≥ 22.22 | The React Router v8 migration is scheduled (all v8 future flags are already enabled) |
+| `@types/node` | 22.x | Type definitions should match the Node.js 22 runtime used locally and in CI (`.nvmrc`) | The project moves to a newer Node LTS (e.g. 24) |
+
 ---
 
 ## 3. System overview
