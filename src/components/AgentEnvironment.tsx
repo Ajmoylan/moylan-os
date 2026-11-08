@@ -19,7 +19,7 @@ export function AgentEnvironment({ agent }: { agent: AgentDefinition }) {
       <Container>
         <section
           aria-labelledby="environment-title"
-          className="grid gap-12 pt-16 pb-12 sm:pt-24 lg:grid-cols-[1.3fr_0.7fr] lg:items-end"
+          className="grid grid-cols-1 gap-12 pt-16 pb-12 sm:pt-24 lg:grid-cols-[1.3fr_0.7fr] lg:items-end"
         >
           <div>
             <p className="os-label">
@@ -31,7 +31,7 @@ export function AgentEnvironment({ agent }: { agent: AgentDefinition }) {
             </p>
             <h1
               id="environment-title"
-              className="mt-6 text-5xl font-semibold tracking-tight text-balance sm:text-6xl"
+              className="mt-6 text-display font-semibold tracking-tight text-balance sm:text-6xl"
             >
               {agent.domain}
             </h1>
@@ -64,18 +64,20 @@ export function AgentEnvironment({ agent }: { agent: AgentDefinition }) {
           <h2 id="contents-title" className="os-label">
             In this environment
           </h2>
-          <ul className="mt-6 grid gap-3 sm:grid-cols-2">
+          <ul className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
             {agent.contents.map((item) => (
               <li
                 key={item.label}
-                className="os-panel flex items-start justify-between gap-4 px-5 py-4"
+                className="os-panel flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-5 py-4"
               >
-                <span className="flex gap-3">
+                {/* The badge drops below the label only when the label would get less than 8rem
+                    (enlarged text on narrow screens); unchanged at normal text sizes. */}
+                <span className="flex min-w-0 flex-[1_1_8rem] gap-3">
                   <span
                     aria-hidden="true"
                     className="mt-2.5 size-1.5 shrink-0 rounded-full bg-(--accent)"
                   />
-                  {item.label}
+                  <span className="min-w-0">{item.label}</span>
                 </span>
                 {item.planned && <StatusBadge status="planned" />}
               </li>
@@ -87,7 +89,7 @@ export function AgentEnvironment({ agent }: { agent: AgentDefinition }) {
           <h2 id="other-title" className="os-label">
             Other environments
           </h2>
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {others.map((other) => (
               <PathwayCard
                 key={other.id}

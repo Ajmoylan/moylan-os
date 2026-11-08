@@ -68,6 +68,12 @@ export default function Privacy() {
             properties are checked by automated tests on every build.
           </p>
           <p>
+            <strong>Motion setting.</strong> The motion control in the header (System, Full, Reduced
+            or Off) is kept only in your browser tab&apos;s memory while you use the site. It is
+            never saved on your device or sent anywhere, so reloading the page returns it to System,
+            which follows your device&apos;s own reduced-motion setting.
+          </p>
+          <p>
             <strong>Browser caching.</strong> Like any website, your browser keeps copies of the
             files it downloads from this site (pages, styles, scripts, fonts and images) in its
             ordinary HTTP cache, so later pages load faster. This site tells your browser how long

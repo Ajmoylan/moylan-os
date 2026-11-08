@@ -5,16 +5,19 @@
  * break `connect-src 'self'` and leak visitor data to a third party). Initial tiers are a
  * conservative guess; the WebGL stage refines them at runtime from measured frame times.
  *
+ * Motion is not a device capability: the effective motion mode comes from the motion preference
+ * store (src/motion/, ARCHITECTURE §10) and is combined with these signals in `planStage()`.
+ *
  * Imported eagerly by the root composition adapter, so it must never import Three.js.
  */
 
+import type { EffectiveMotion } from "~/motion/policy";
+
 export type QualityTier = 0 | 1 | 2 | 3;
-export type StageMotion = "full" | "reduced";
 
 export interface CapabilitySignals {
   /** A WebGL2 context can be created without a major performance caveat. */
   webgl2: boolean;
-  reducedMotion: boolean;
   /** Network Information API `saveData` (Chromium); undefined elsewhere. */
   saveData: boolean;
   coarsePointer: boolean;
@@ -24,6 +27,7 @@ export interface CapabilitySignals {
 }
 
 export type StageReason =
+  | "motion-off"
   | "save-data"
   | "no-webgl2"
   | "low-end-device"
@@ -34,26 +38,44 @@ export type StageReason =
 export interface StagePlan {
   /** 0 = static fallback only: the 3D chunk is never downloaded. */
   tier: QualityTier;
-  motion: StageMotion;
+  motion: EffectiveMotion;
+  /**
+   * Whether pointer-driven effects (the ADR-004 flow map and cursor displacement) may run.
+   * Only with full motion: never when motion is reduced or off (ADR-004 constraint).
+   */
+  pointerEffects: boolean;
   reason: StageReason;
 }
 
-/** Pure policy: map device signals to a stage plan. Order matters: cheapest exits first. */
-export function planStage(signals: CapabilitySignals): StagePlan {
-  const motion: StageMotion = signals.reducedMotion ? "reduced" : "full";
+const plan = (tier: QualityTier, motion: EffectiveMotion, reason: StageReason): StagePlan => ({
+  tier,
+  motion,
+  pointerEffects: tier > 0 && motion === "full",
+  reason,
+});
 
-  if (signals.saveData) return { tier: 0, motion, reason: "save-data" };
-  if (!signals.webgl2) return { tier: 0, motion, reason: "no-webgl2" };
+/**
+ * Pure policy: combine device signals with the effective motion mode. Order matters: cheapest
+ * exits first.
+ * - "off": tier 0 regardless of the device. The 3D chunk is not downloaded (or is unmounted).
+ * - "reduced": at most tier 1, no pointer effects.
+ * - "full": whatever the device allows. An explicit "Full" choice overrides the OS preference, but
+ *   never Save-Data, missing WebGL2 or a low-end device.
+ */
+export function planStage(signals: CapabilitySignals, motion: EffectiveMotion): StagePlan {
+  if (motion === "off") return plan(0, motion, "motion-off");
+  if (signals.saveData) return plan(0, motion, "save-data");
+  if (!signals.webgl2) return plan(0, motion, "no-webgl2");
 
   const lowMemory = signals.deviceMemory !== undefined && signals.deviceMemory <= 2;
   const fewCores = signals.hardwareConcurrency !== undefined && signals.hardwareConcurrency <= 2;
-  if (lowMemory || fewCores) return { tier: 1, motion, reason: "low-end-device" };
-  if (signals.reducedMotion) return { tier: 1, motion, reason: "reduced-motion" };
+  if (lowMemory || fewCores) return plan(1, motion, "low-end-device");
+  if (motion === "reduced") return plan(1, motion, "reduced-motion");
 
   const midMemory = signals.deviceMemory !== undefined && signals.deviceMemory <= 4;
-  if (signals.coarsePointer || midMemory) return { tier: 2, motion, reason: "touch-or-mid-range" };
+  if (signals.coarsePointer || midMemory) return plan(2, motion, "touch-or-mid-range");
 
-  return { tier: 3, motion, reason: "capable" };
+  return plan(3, motion, "capable");
 }
 
 /**
@@ -89,7 +111,6 @@ export function readCapabilitySignals(win: Window = window): CapabilitySignals {
   };
   return {
     webgl2: probeWebGL2(win.document),
-    reducedMotion: media("(prefers-reduced-motion: reduce)"),
     saveData: nav.connection?.saveData === true,
     coarsePointer: media("(pointer: coarse)"),
     deviceMemory: typeof nav.deviceMemory === "number" ? nav.deviceMemory : undefined,

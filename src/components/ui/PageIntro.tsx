@@ -20,7 +20,7 @@ export function PageIntro({ agentId = "nex", label, title, children }: PageIntro
         />
         {label}
       </p>
-      <h1 className="mt-5 text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
+      <h1 className="mt-5 text-title font-semibold tracking-tight text-balance sm:text-5xl">
         {title}
       </h1>
       {children && (
@@ -33,9 +33,13 @@ export function PageIntro({ agentId = "nex", label, title, children }: PageIntro
 /** Honest "in development" notice for placeholder environments and pages. */
 export function DevelopmentNotice({ children }: { children: ReactNode }) {
   return (
-    <div className="os-panel os-brackets flex gap-4 p-5 sm:p-6" role="note">
+    // Wraps the label above the text only when the text would get less than 10rem beside it
+    // (enlarged text on narrow screens); unchanged at normal text sizes down to 320px.
+    <div className="os-panel os-brackets flex flex-wrap gap-x-4 gap-y-2 p-5 sm:p-6" role="note">
       <span className="os-label shrink-0 pt-0.5 text-(--accent)">Status</span>
-      <div className="text-sm leading-relaxed text-text-muted">{children}</div>
+      <div className="min-w-0 flex-[1_1_10rem] text-sm leading-relaxed text-text-muted">
+        {children}
+      </div>
     </div>
   );
 }

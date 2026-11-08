@@ -1,6 +1,6 @@
 # MOYLAN//OS — Architecture
 
-**Status:** v0.4 · 7 November 2026 · Milestone 1 complete (two independent reviews); ADR-004 and ADR-007 accepted for Milestone 2
+**Status:** v0.5 · 8 November 2026 · Milestone 1 complete (two independent reviews); Milestone 2.1 (runtime motion preferences) implemented, awaiting review; ADR-004 and ADR-007 accepted for Milestone 2
 **Sources:** master plan v1.0 (PDF + Apple Notes text) and blueprint illustration in `docs/references/` (kept locally; not published in the repository).
 **Companion documents:** [`DESIGN-BRIEF.md`](DESIGN-BRIEF.md) · [`AGENT-PROFILES.md`](AGENT-PROFILES.md) · [`SECURITY.md`](SECURITY.md) · [`PRIVACY-COMPLIANCE.md`](PRIVACY-COMPLIANCE.md)
 
@@ -38,7 +38,7 @@ Versions as installed for Milestone 1 (Node.js 22 LTS locally and in CI).
 | Post-processing | **pmndrs `postprocessing`** (high tier only) | Bloom (mipmap blur), subtle vignette/noise. Lower tiers fake glow in the particle shader. |
 | Animation | **GSAP 3** (+ ScrollTrigger; SplitText for text reveals) | GSAP and all its plugins are now free to use. |
 | Smooth scroll | **Lenis: not in v1** | Only if it clearly improves the result without breaking native behaviour (plan rule). Re-evaluate in Phase 3. |
-| State | **Zustand** **(accepted with constraints, ADR-007)** | Low-frequency semantic state only (selected agent, transition requests, quality tier, pause, motion preference). Continuous data lives in refs and GPU uniforms; never `set` per frame. Arrives in Milestone 2. |
+| State | **Zustand 5** **(accepted with constraints, ADR-007)** | Low-frequency semantic state only (selected agent, transition requests, quality tier, pause, motion preference). Continuous data lives in refs and GPU uniforms; never `set` per frame. In use since Milestone 2.1 for the motion preference store (`src/motion/store.ts`); ≈ 1 KB gz in the initial bundle. |
 | Styling | **Tailwind CSS 4.3** | CSS-first `@theme` tokens in `src/styles/app.css`; agent accents via `[data-agent]` scopes (no inline styles, for CSP). |
 | Fonts | **Geist / Geist Mono** via `@fontsource-variable` **(approved)** | Self-hosted, bundled by Vite; Latin subset preloaded. |
 | GPU capability | **Local detection** (`src/experience/capabilities.ts`) + runtime frame-time adaptation | Replaces the earlier *detect-gpu* proposal, which fetches benchmark data from a CDN by default (a third-party request, and blocked by `connect-src 'self'`). ADR-013. |
@@ -99,7 +99,7 @@ Dependabot ignores **major-version updates only** for the packages below (`.gith
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Data flow:** today the stage receives the current agent (from the route manifest) and its plan as props. From Milestone 2, ADR-007 applies: a small store holds **low-frequency semantic state** (selected agent, transition requests, tier, pause, motion preference); **continuous data** (pointer position and velocity, frame timing, interpolation) lives in mutable refs and preallocated structures inside the stage; **continuous visual state** lives in GPU uniforms and textures.
+- **Data flow:** today the stage receives the current agent (from the route manifest) and its plan as props; the plan combines local capability signals with the effective motion mode from the motion store (§10, Milestone 2.1). ADR-007 applies: a small store holds **low-frequency semantic state** (selected agent, transition requests, tier, pause, motion preference); **continuous data** (pointer position and velocity, frame timing, interpolation) lives in mutable refs and preallocated structures inside the stage; **continuous visual state** lives in GPU uniforms and textures.
 - **Pointer input** is captured on `window` (not the canvas), so the scene reacts while the DOM stays fully interactive above it.
 - **The shared GPU particle-system architecture is unchanged** (§6): NEX, FORGE, SYN, ATLAS and CIPHER are equal-N shapes morphed by one `AgentCore` inside the stage chunk.
 
@@ -291,8 +291,8 @@ GSAP ScrollTrigger drives section reveals, parallax depth and agent "reactions" 
 ### 9.1 Loading sequence
 
 1. **Prerendered HTML + CSS** paints instantly: wordmark, headline, tagline, NEX intro line, pathways, nav. This is the LCP element (text, not canvas).
-2. **App JS hydrates**, with no Three.js in it (≈ 118 KB gz for the home page in Milestone 1, mostly React 19 + React Router).
-3. **When idle** (`requestIdleCallback` with a 2 s timeout; `setTimeout` fallback), `StageMount` reads local capability signals and plans a tier. Tier 0 stops here: no 3D download.
+2. **App JS hydrates**, with no Three.js in it (≈ 119.8 KB gz for the home page after Milestone 2.1, mostly React 19 + React Router). `MotionSync` reads `prefers-reduced-motion` and starts following it (§10).
+3. **When idle** (`requestIdleCallback` with a 2 s timeout; `setTimeout` fallback), `StageMount` reads local capability signals once and combines them with the effective motion mode to plan a tier. Tier 0 stops here: no 3D download. With motion Off, no capability probe runs at all until motion is turned back on. The plan is recomputed (without re-probing) whenever the effective motion mode changes.
 4. Otherwise the stage chunk is dynamically imported and fades in over the static design. Shape buffers are generated (in a worker if needed) and NEX coalesces from drifting particles.
 
 Nothing waits on the 3D chunk. If it fails to load, throws, or WebGL is unavailable, the static design remains: an error boundary around the stage renders nothing.
@@ -301,8 +301,8 @@ Nothing waits on the 3D chunk. If it fails to load, throws, or WebGL is unavaila
 
 | Tier | Trigger (initial plan, local signals only) | AgentCore N | Ambient | Flow map | DPR cap | PostFX |
 |---|---|---|---|---|---|---|
-| **0 Static** | Save-Data, no WebGL2, software rendering (`failIfMajorPerformanceCaveat`), or (later) Motion Off | n/a | n/a | n/a | n/a | CSS + SVG poster |
-| **1 Low** | `prefers-reduced-motion` (motion mode `reduced`), ≤ 2 GB device memory or ≤ 2 cores | ~12k | ~2k | 64² (none when motion is reduced) | 1.0 | none (shader glow) |
+| **0 Static** | Effective motion `off`, Save-Data, no WebGL2, or software rendering (`failIfMajorPerformanceCaveat`) | n/a | n/a | n/a | n/a | CSS + SVG poster |
+| **1 Low** | Effective motion `reduced` (§10), ≤ 2 GB device memory or ≤ 2 cores | ~12k | ~2k | 64² (none when motion is reduced) | 1.0 | none (shader glow) |
 | **2 Medium** | Coarse pointer (touch) or ≤ 4 GB device memory | ~30k | ~6k | 128² | 1.5 | none |
 | **3 High** | Everything else (including browsers that don't expose memory/cores) | ~60–80k | ~12k | 256² | 2.0 | bloom (mipmap blur) |
 
@@ -317,7 +317,7 @@ Two separate JavaScript budgets, **enforced on every build** by `scripts/postbui
 
 | Budget | Limit (gzip) | Measured (Milestone 1) | How it's measured |
 |---|---|---|---|
-| **Initial application JS**, per prerendered page | ≤ 125 KB | ≈ 118 KB (home) | Every script the page's HTML references, plus their static-import closure |
+| **Initial application JS**, per prerendered page | ≤ 125 KB | ≈ 119.8 KB (home, Milestone 2.1) | Every script the page's HTML references, plus their static-import closure |
 | **Lazy 3D stage** | ≤ 250 KB | ≈ 0.2 KB (placeholder) | The `Stage-*.js` chunk plus everything reachable from it through static **and nested dynamic** `import()`s, minus chunks already in any page's initial set |
 | Stage isolation | Must be 0 | 0 | The build fails if any page's initial set contains the stage chunk |
 
@@ -358,9 +358,11 @@ The chosen format is recorded in the stage's state (for debugging) and never ret
 
 **Motion and data preferences:**
 
-- `prefers-reduced-motion`: tier ≤ 1, motion mode `reduced` (fully assembled forms, slow idle, no flow map and no cursor displacement, no arrival or morph animation; cross-fades instead). Today the preference is read once when the stage is planned. **Milestone 2 must first implement and test runtime changes** (a `matchMedia` change listener updating the store's motion mode), before animated pointer interaction is considered complete.
-- Save-Data: tier 0. The 3D chunk is never requested (implemented and tested).
-- Motion Off (visible toggle, Milestone 2): the render loop stops and the stage fades to the static design. Interaction with the OS preference is defined in §10 (motion preference policy).
+- Effective motion `reduced` (from the OS preference under System, or an explicit Reduced choice): tier ≤ 1, `pointerEffects: false` (fully assembled forms, slow idle, no flow map and no cursor displacement, no arrival or morph animation; cross-fades instead). **Implemented in Milestone 2.1:** the OS preference is followed live through a `matchMedia` change listener, and the stage plan updates on every change (tested in `motion.spec.ts`).
+- Save-Data: tier 0. The 3D chunk is never requested, even with an explicit Full choice (implemented and tested). **Milestone 2.1 behaviour: Save-Data is sampled once, at the initial idle capability detection.** Turning Save-Data on later in the visit doesn't unload a stage that has already loaded, and turning it off doesn't load one. That is acceptable for the 0.2 KB placeholder stage.
+- **Milestone 2.2 requirement (runtime network preferences):** before the real 3D chunk ships, review reacting to Save-Data changes during a visit. Where the browser supports change notifications (the Network Information API's `navigator.connection` `change` event, Chromium-based browsers only), switching Save-Data on should drop to tier 0 (stop the render loop, fade to static, release GPU resources), and switching it off may allow loading on the next idle check. Where notifications aren't supported (Safari, Firefox), keep the current behaviour: sample at initial detection and respect it for the rest of the visit. No new dependency, and only a small addition to the initial bundle (one feature-detected listener in `StageMount`/`capabilities.ts`, removed on cleanup).
+- Effective motion `off` (visible control, implemented in Milestone 2.1): tier 0. `StageMount` unmounts a loaded stage and downloads nothing if it hasn't loaded yet. From Milestone 2.2 the render loop stops and the canvas fades to the static design before unmounting. Interaction with the OS preference is defined in §10 (motion preference policy).
+- **Stage failure** (load or render error) disables the stage for the rest of the session, held in memory in `StageMount`, so turning motion Off and on again never retries a failed stage.
 
 **Separation from essential content:** enforced by the composition boundary (§5), the lazy import, the build's stage-isolation check (§9.3) and Playwright tests confirming the stage chunk isn't requested with Save-Data or without WebGL2.
 
@@ -382,22 +384,44 @@ The chosen format is recorded in the stage's state (for debugging) and never ret
 - **Mobile menu:** disclosure button with `aria-expanded`/`aria-controls`; Escape closes it and returns focus.
 - **Visible focus** (2px accent outline) on every interactive element.
 - **Touch targets:** standalone controls are ≥ 44×44 CSS px (project goal, above WCAG 2.2 AA's 24×24). Links inside running text are marked `data-inline` and rely on the WCAG 2.5.8 inline exception. Stretched card links are measured by their card.
-- **Reduced motion:** CSS transitions collapse under `prefers-reduced-motion`; the stage plan uses the reduced motion mode.
+- **Runtime motion preferences** (Milestone 2.1): see the policy below. CSS transitions follow the *effective* mode through `<html data-motion>`; without JavaScript (no attribute) they follow `prefers-reduced-motion` directly.
 - **Colour contrast:** every text/accent token meets WCAG AA on every surface (unit-tested).
+- **Reflow and enlarged text** (Milestone 2.1): no page scrolls sideways or clips text at 100%, 150% or 200% browser text size, from 320 px phones to desktop, on every route including the 404 page (tested). Measures:
+  - Fluid display sizes (`--text-display`: `clamp(2.25rem, 13.333vw, 3rem)` for the large page headings; `--text-title`: `clamp(1.875rem, 10vw, 2.25rem)` for secondary page headings). They're identical to the previous `text-5xl`/`text-4xl` on screens 360 px and wider at normal text size, and the `sm`/`lg` steps are unchanged. The `rem` minimum keeps headings growing with the visitor's text setting.
+  - Mobile single-column grids use `grid-cols-1` (`minmax(0, 1fr)`), so a long word can't widen a column past the screen.
+  - `overflow-wrap: break-word` on body text and `anywhere` on h1–h3: a word breaks only when it can't fit on a line by itself, which never happens at normal text sizes. Contact links (URLs, email addresses) use `wrap-anywhere`.
+  - In very narrow layouts in `rem` terms (`width < 18rem`, reached only with enlarged text; 288 px at the default size), text is hyphenated (`hyphens: auto`, `lang="en-GB"`).
+  - Rows that pair text with a label or badge (the development notice, environment contents, pathway cards) let the label/badge wrap below only when the text would get less than 8–10rem, which never happens at normal sizes down to 320 px. The wordmark may wrap after "MOYLAN", and below 10.5rem the Menu button shows only its icon (accessible name "Menu").
 - **Non-WebGL experience:** fully functional and complete; the static NEX emblem has a text alternative.
+
+**Motion preference policy (implemented in Milestone 2.1):**
+
+| Site setting | Effective motion | When the OS preference changes |
+|---|---|---|
+| **System** (default) | `reduced` if `prefers-reduced-motion: reduce`, else `full` | Follows it live (`matchMedia` change listener) |
+| **Full** (explicit choice) | `full`, within what the device allows (Save-Data, missing WebGL2 and low-end tiers still apply) | Ignored. The visitor chose on this site; the control stays visible to change back |
+| **Reduced** (explicit choice) | `reduced`: minimal decorative movement, no pointer-driven effects | Ignored |
+| **Off** (explicit choice) | `off`: no decorative animation, static design, no 3D work | Ignored |
+
+- **Rules:** the default always honours the OS; only an **explicit, visible** choice overrides it. Choosing **System** again returns to following the OS.
+- **No persistence (decided for Milestone 2.1):** the choice lives in memory only. Nothing is written to cookies, web storage or any other device storage, so a reload or a new visit starts on System again (PRIVACY-COMPLIANCE §4.3). Client-side navigation within a visit keeps the choice.
+- **Implementation:**
+  - `src/motion/policy.ts`: the pure policy (`resolveMotion`).
+  - `src/motion/store.ts`: a Zustand store holding `setting`, `systemPrefersReduced` and `effective` (ADR-007). Its initial state is fixed (`system`/`full`) so prerendered HTML and hydration always match. No-op updates never notify subscribers. `startMotionSync()` reads and follows the OS preference (with the legacy `addListener` API as a fallback), mirrors the effective mode onto `<html data-motion>` through a store subscription (no React re-render), and removes every listener on cleanup.
+  - `src/motion/MotionSync.tsx`: mounts the sync for the shell's lifetime.
+  - `src/composition/StageMount.tsx`: subscribes to `effective` only and recomputes the stage plan when it changes.
+  - `src/styles/app.css`: under `data-motion="reduced"` or `"off"`, transitions and animations collapse and hover lifts are removed; an explicit `full` keeps the site's subtle transitions even when the OS prefers reduced motion.
+- **The control** (`src/components/layout/MotionControl.tsx`), in the header on every page:
+  - A disclosure button (`aria-expanded`, `aria-controls`) whose accessible name states the setting and the mode in effect, e.g. "Motion: System, Reduced". The visible label starts with "Motion" (WCAG 2.5.3); on wide screens the state is also shown in mono next to it, and a three-bar glyph shows the effective mode on every width.
+  - The panel is a native radio group in a `fieldset` with legend "Motion", so keyboard behaviour is the platform's own: Tab into the group, arrow keys to choose. Each option has a short description (`aria-describedby`). The panel shows the mode in effect and says the choice isn't saved.
+  - Escape closes the panel and returns focus to the button; focus or a click moving outside closes it. Each option row is at least 44 px high.
+  - **Short and enlarged layouts:** the panel is anchored to the header's content container and never wider than the space available. Its height is capped to the viewport below the header (`100dvh`, with a `100vh` fallback, minus the header offset and safe-area insets). Its contents scroll internally with `overscroll-behavior: contain`, and focusing an option scrolls its whole row into view. The mobile menu has the same height cap. Below 360 CSS px (e.g. 1280 px at 400% zoom) the button shows only its glyph, so the header never scrolls sideways; its accessible name still starts with "Motion".
+  - **Enlarged text** (the browser's font-size setting, which also scales `rem` breakpoints): when the wordmark and controls no longer fit on one line, the header row wraps them onto a second row instead of overflowing. `SiteHeader` measures the row with a `ResizeObserver` and writes its height to `--os-header-row`, a CSSOM write on resize only that the CSP allows and that causes no React re-render. Both panels size themselves from that variable. A wrapped header gets `data-wrapped` and stops being sticky, so a two-row header can't cover a large part of a small screen. At the default text size the header is unchanged: one 64 px sticky row.
+  - **One header disclosure at a time:** `SiteHeader` holds a single local `"menu" | "motion" | null` value. Opening Motion closes the mobile menu and vice versa, so Escape always acts on the one open panel and returns focus to its own button. This needs no global state or extra dependency.
+  - It needs JavaScript, so the prerendered button is `invisible` and `disabled` (reserving its space, so there's no layout shift) until hydration. Without JavaScript there's no decorative animation to control, and CSS follows the OS preference.
 
 **Planned (later milestones):**
 
-- **Visible motion toggle and motion preference policy** (Milestone 2):
-
-  | Site setting | Effective motion | When the OS preference changes |
-  |---|---|---|
-  | **System** (default; nothing stored) | `reduced` if `prefers-reduced-motion: reduce`, else `full` | Follows it live (`matchMedia` change listener) |
-  | **Full** (explicit choice) | `full` | Ignored. The visitor chose on this site; the toggle stays visible to change back |
-  | **Reduced** (explicit choice) | `reduced` | Ignored |
-  | **Off** (explicit choice) | `off`: render loop stopped, static design, no 3D work | Ignored |
-
-  Rules: the default always honours the OS; only an **explicit, visible** choice overrides it, and the toggle shows what is in effect (e.g. "System · Reduced"). Choosing **System** again clears any stored choice. Persistence follows PRIVACY-COMPLIANCE §4.3 (stored only after an explicit change; storage access wrapped in try/catch; the toggle works without storage). Effective `reduced`/`off` disables the flow map and pointer displacement (ADR-004).
 - **Canvas:** `aria-hidden="true"`, `pointer-events: none` (the placeholder stage layer already follows this).
 - **DecodeText component:** renders the final string in the DOM (`aria-label` on the wrapper, decorative glyph spans `aria-hidden`) and does nothing under reduced motion.
 - **Developer console (optional):** `role="dialog"` with `aria-modal`, combobox/listbox pattern, opened with `` ` `` or `Ctrl/⌘+K`; Escape closes; focus returns to the trigger.
@@ -408,15 +432,16 @@ The chosen format is recorded in the stage's state (for debugging) and never ret
 
 ## 11. Testing and quality gates
 
-Current coverage (Milestone 1, final): **59 unit/component tests** (Vitest, 7 files) and **98 end-to-end tests** (49 scenarios × desktop + Pixel 7; the mobile-menu scenario is skipped on desktop, so 97 run).
+Current coverage (Milestone 2.1, after remediation): **95 unit/component tests** (Vitest, 10 files) and **180 end-to-end tests** (90 scenarios × desktop + Pixel 7; the mobile-menu scenario is skipped on desktop, so 179 run). Milestone 1 ended with 59 unit and 98 end-to-end tests.
 
 | Layer | Tool | What is covered now |
 |---|---|---|
-| Unit | Vitest | Agent registry (manifest consistency, CSS-token sync, **WCAG AA contrast of every colour token**, voice rule); route manifest and `agentForPath` (every page, trailing slashes, 404, project slugs); `planStage` tier policy and `probeWebGL2`; projects truthfulness rule; contrast maths |
-| Component | Vitest + Testing Library (jsdom) | Header nav, `aria-current`, mobile menu (Escape, focus return, closes on navigation); Home (single h1, NEX first-person intro, five pathway links, emblem text alternative, no inline styles); `ExternalLink` (enforced `target`/`rel`, unsafe URLs rendered as text) |
+| Unit | Vitest | Agent registry (manifest consistency, CSS-token sync, **WCAG AA contrast of every colour token**, voice rule); route manifest and `agentForPath` (every page, trailing slashes, 404, project slugs); `planStage` tier policy combined with each motion mode (Off → tier 0, Reduced → ≤ tier 1 without pointer effects, Full never overriding device limits) and `probeWebGL2`; motion policy table; motion store (OS changes followed only under System, explicit overrides, no-op updates don't notify, a subscriber re-renders only when its slice changes, no storage writes); `startMotionSync` (initial read, live changes, legacy `addListener`, missing or throwing `matchMedia`, cleanup removes listener, subscription and attribute); `StageMount` with a manual idle queue, fake timers and mocked Stage modules (one probe per visit, re-planning without re-probing, Off before the idle probe cancels it, unmount cancels it, the `setTimeout` fallback is cancellable, a failed lazy import and a render failure both stay failed after switching Off and on, with no retry); projects truthfulness rule; contrast maths |
+| Component | Vitest + Testing Library (jsdom) | Header nav, `aria-current`, mobile menu (Escape, focus return, closes on navigation); Home (single h1, NEX first-person intro, five pathway links, emblem text alternative, no inline styles); `ExternalLink` (enforced `target`/`rel`, unsafe URLs rendered as text); `MotionControl` (accessible name with setting and effective mode, labelled radio group with descriptions, keyboard operation with arrow keys and Escape focus return, live OS updates, closing on outside focus/click, invisible and disabled in prerendered HTML); `SiteHeader` disclosures never overlap (pointer and keyboard, Escape focus return) |
 | E2E | Playwright against the **production build with real headers** | Every route: 200, one `h1`, title, canonical URL; real 404 status; trailing-slash redirect; client-side navigation with focus management; skip link; **JavaScript disabled: every route and the 404 page render their content, heading and footer navigation from static HTML, plus a homepage-to-environment journey**; reduced motion; no horizontal overflow; mobile menu; scroll restoration without storage |
 | Accessibility | `@axe-core/playwright` | Zero violations (WCAG 2.0/2.1/2.2 A + AA + best practice) on every route, desktop and mobile; **44×44 touch targets** on every route |
-| WebGL pipeline | Playwright (WebGL2/Save-Data stubbed) | Stage loads lazily only when allowed; persists across routes; follows the route manifest (including 404); low tier under reduced motion; never downloaded without WebGL2 or with Save-Data |
+| WebGL pipeline | Playwright (WebGL2/Save-Data stubbed) | Stage loads lazily only when allowed; persists across routes; follows the route manifest (including 404); low tier without pointer effects under reduced motion; never downloaded without WebGL2 or with Save-Data |
+| Motion preferences | Playwright (`emulateMedia` for live OS changes) | Default System following the OS on first load; live OS changes update `<html data-motion>`, the control, CSS transitions and the stage plan without reloading the chunk; explicit Full/Reduced/Off override the OS until System is chosen; Off removes the stage, keeps the static design and persists across client-side navigation, and turning motion back on restores the stage; keyboard operation and focus return; axe with the panel open, panel inside the viewport, 44 px option rows; no storage, cookies or third-party requests after changes, and a reload returns to System; without WebGL2 or with Save-Data an explicit Full never downloads the chunk; without JavaScript the control is hidden and CSS follows the OS; **short and zoomed layouts** (667×375, 667×320, 640×360 = 1280×720 at 200%, 320×256 = 1280×1024 at 400%): the panel stays inside the viewport with no sideways scrolling, every option is reachable by pointer (desktop), touch (mobile) and arrow keys with the focused row fully visible, 44 px rows, contained overscroll, and the mobile menu stays inside the viewport; opening Motion closes the mobile menu and vice versa; **enlarged text** at 150% and 200% (the browser default font size, set through Chromium's DevTools protocol) at 320×568, 412×915 and 667×375: every header control inside the viewport, ≥ 44×44 and not covered, the accessible name unchanged, a wrapped header not sticky, the Motion panel inside the viewport with each focused option's radio and name visible (and its whole row whenever it fits), the mobile menu inside the viewport; at the default text size the header stays one sticky row; between 640 and 767 px the open panel starts below the header and leaves the header controls usable |
 | Security / privacy | Playwright + postbuild checks | CSP and security headers; **no CSP violations or console errors anywhere** (suite-wide fixture); no cookies, local/session storage, IndexedDB, Cache Storage, service workers or third-party requests; build fails on inline `style`/event-handler attributes, source maps, an oversized SWA config, budget overruns or a non-lazy stage chunk |
 | Supply chain | npm audit (production + full tree), CodeQL, dependency review, Dependabot | CI (see SECURITY.md §10) |
 | Static | `tsc` (strict), ESLint (`jsx-a11y` strict, react-hooks, CSP/XSS rules, 3D import boundary), Prettier | |
@@ -542,7 +567,7 @@ Full controls: SECURITY.md §12 (OWASP Top 10 for LLM Applications 2025) and PRI
   - **No React `setState` and no Zustand `set` on every animation frame.** Store updates happen on discrete events (route change, hover start/end, tier change, toggle).
   - **No React component subscribes to continuous animation data.** Components select only the semantic slices they render; the render loop reads the store with `getState()` without subscribing.
   - The motion preference follows the policy in §10.
-- **Verification (Milestone 2):** a dev-only render counter or React Profiler check confirms that the DOM tree doesn't re-render during pointer movement or idle animation.
+- **Verification:** Milestone 2.1 adds a unit test showing that a store subscriber re-renders only when its own slice changes, and that no-op updates don't notify. From Milestone 2.2, a dev-only render counter or React Profiler check confirms that the DOM tree doesn't re-render during pointer movement or idle animation.
 
 Each accepted ADR gets its own file in `docs/adr/` when the corresponding milestone is reviewed.
 
@@ -554,7 +579,8 @@ Aligned with the master plan's phases. Each milestone ends with something demons
 |---|---|---|
 | **1 Creative spec** | DESIGN-BRIEF, ARCHITECTURE, AGENT-PROFILES, SECURITY, PRIVACY-COMPLIANCE | ✅ Approved (v0.2) |
 | **2 · M1 Static foundation** | Accessible, secure, prerendered NEX homepage + placeholder environments (§16) | ✅ Complete: approved after two independent reviews |
-| **2 · M2 Interactive background** | Starts with runtime reduced-motion handling + tests and the motion preference policy (§10); then the Three.js/R3F stage, FlowField (ADR-004), AmbientField, runtime tier adaptation, context-loss handling, motion toggle | Next, after approval to proceed |
+| **2 · M2.1 Runtime motion preferences** | Live `prefers-reduced-motion` handling, the motion preference policy and store, the visible motion control, stage-plan integration, tests (§10, §17) | ✅ Implemented, awaiting review |
+| **2 · M2.2+ Interactive background** | The Three.js/R3F stage (first live GPU particle environment), FlowField (ADR-004), AmbientField, runtime tier adaptation, context-loss handling; review runtime Save-Data changes (§9.4) | Next, after M2.1 review |
 | **2 · M3 NEX core** | AgentCore particle system with the NEX shape, arrival and idle animation | After M2 review |
 | **2 · M4 Prototype polish** | Pathway colour preview, fallbacks, performance tuning, Lighthouse | After M3 review |
 | **3 Agent world** | NEX → FORGE morph spike, then all specialists, transitions and environments | |
@@ -604,3 +630,43 @@ No critical or high findings. Addressed:
 ### Not in Milestone 1
 
 WebGL, particles, the interactive NEX avatar, morph transitions, the motion toggle (arrives with the first motion in M2), real case-study content, final logo/assets, AI chat, Azure deployment.
+
+---
+
+## 17. Milestone 2.1: runtime motion preferences (implemented)
+
+**Goal:** make motion a runtime, visitor-controlled property before any GPU animation exists, so the WebGL stage in Milestone 2.2 is built against a tested contract.
+
+### Delivered
+
+1. **Policy and store** (`src/motion/`): System / Full / Reduced / Off resolved to an effective `full | reduced | off` mode (§10). The OS preference is followed live, with listener cleanup. In memory only.
+2. **Stage integration:** `planStage(signals, motion)` now takes the effective mode. Motion is no longer a capability signal, so `readCapabilitySignals()` doesn't read `prefers-reduced-motion`. Off → tier 0 (`motion-off`), Reduced → at most tier 1, and `StagePlan.pointerEffects` is true only with full motion on tier ≥ 1. That is the ADR-004 contract the flow map must honour. The placeholder stage exposes it as `data-stage-pointer`.
+3. **StageMount:** probes capabilities once (never while Off), recomputes the plan when the effective mode changes, unmounts the stage under Off, and keeps a stage failure for the session.
+4. **CSS:** transitions follow `<html data-motion>`; reduced and off also remove hover lifts. With no JavaScript, CSS falls back to the OS media query.
+5. **Motion control** in the header (§10), consistent with the cybernetic-minimalist identity: mono `// Motion` legend, bracketed glass panel, a three-bar glyph lit in the page's agent accent.
+6. **Dependency:** `zustand` 5.0.16, pinned exactly. Chosen over 5.1.0 because 5.1.0 was two days old at install time, inside the project's 7-day Dependabot cooldown. No Three.js or React Three Fiber yet.
+
+### Acceptance criteria (verified by automated tests)
+
+- Default System follows the OS on load and live; explicit choices override it until System is chosen again.
+- Off removes the stage and downloads nothing more; Reduced disables pointer effects and caps the tier; Full never overrides Save-Data, missing WebGL2 or low-end tiers.
+- Fully keyboard operable; axe passes with the panel open on desktop and mobile; 44 px targets.
+- No cookies, storage or third-party requests; a reload returns to System.
+- Initial JS ≈ 119.8 KB gz after remediation (budget 125 KB); the lazy stage chunk is unchanged.
+- On short and zoomed viewports every motion option is reachable by pointer, touch and keyboard; header disclosures never overlap.
+
+### Remediation after independent review
+
+No critical or high findings. Addressed:
+
+- **Short-viewport Motion menu (medium):** at 667×375 and 667×320, options below the fold were unreachable. The panel now caps its height to the viewport below the header (`dvh` with a `vh` fallback, safe-area insets), scrolls internally with contained overscroll, and scrolls the focused option's row into view. While fixing this, two related problems were found and fixed. At 320 px wide the new button pushed the Menu button off-screen, so below 360 px it now shows only its glyph. With enlarged text the panel could extend past the left edge, so it is now anchored to the header container with a capped width. The mobile menu got the same height cap.
+- **Overlapping disclosures:** Motion and the mobile menu could be open together. `SiteHeader` now allows one at a time with a single local state value.
+- **StageMount coverage:** deterministic unit tests for Off before the idle probe, cancellation, the `setTimeout` fallback, a failed lazy import, a render failure followed by switching Off and on, and no retry within the visit.
+- **Save-Data:** documented as sampled at initial detection, with a Milestone 2.2 requirement to review runtime changes (§9.4).
+- **Enlarged text (follow-up check):** measured with Chromium's real default-font-size setting rather than a viewport resize. At 150–200% text on 320–412 px phones the header overflowed by up to 248 px and pushed the Menu button off-screen. Shortening labels can't fix this, because the wordmark and two 44 px controls alone exceed the available width. The header row now wraps, the panels size from its measured height, and a wrapped header isn't sticky (§10). Initial JS ≈ 119.8 KB gz.
+- **Page content at enlarged text (follow-up):** a survey of every route (11 pages × widths 280–1280 px × 100/150/200% text) found page content scrolling sideways at 150–200% text on phones. The root causes were display-heading words wider than the screen, mobile grid columns widened by their longest word, label/badge rows that couldn't wrap, and long URL tokens. These are fixed with fluid heading sizes, `grid-cols-1`, need-only word breaking, narrow-regime hyphenation and wrap-when-needed rows (§10). The survey now finds no overflow in all 396 combinations, and normal-size typography is unchanged from 360 px up. A new `reflow.spec.ts` covers this at 320/375/412 px and at 768/1280 px with 200% text, including text clipped inside `overflow: hidden` containers, plus normal-size guards (full heading size, no hyphenation, no split words, single-row notice and badges).
+- **Known limitation:** Chromium never hyphenates capitalised words (to protect proper nouns). So a capitalised heading word wider than the line, e.g. "Engineering" at 200% text on phones up to about 412 px, breaks without a hyphen ("Engineeri / ng"). Avoiding that would mean shrinking display headings to roughly normal size at 200% text, which was rejected in favour of keeping enlarged headings large. Lower-case words hyphenate correctly.
+
+### Not in Milestone 2.1
+
+Three.js / R3F, the GPU particle system, the flow map, GSAP motion, context-loss handling and the runtime frame-time monitor (Milestone 2.2+). Persisting the motion choice across visits was considered and not adopted (PRIVACY-COMPLIANCE §4.3).

@@ -87,6 +87,7 @@ Rules:
 
 - **Self-hosted** (bundled from the Fontsource variable packages, SIL OFL 1.1) with `font-display: swap` and Latin subset. No Google Fonts or other font CDN: this avoids third-party requests that would expose visitor IP addresses (see PRIVACY-COMPLIANCE §7) and keeps the CSP same-origin.
 - Body text ≥ 16px, line-height 1.5–1.65, measure 60–75ch.
+- **Fluid display sizes:** large headings ease down slightly only on screens narrower than 360 px and keep growing with the visitor's browser text size. Long words break only when they can't fit a line by themselves, so at normal sizes headings never split (ARCHITECTURE §10, reflow).
 - The `//` separator is a brand device: wordmark, agent epithets (`// THE ENGINEER`) and breadcrumbs (`MOYLAN//OS / FORGE`).
 - **Cinematic type:** headlines resolve in with a short "decode" (per-character scramble settling to the final glyph, ≤ 600ms) or a masked rise. The final text is in the DOM from the first paint; the effect is purely visual and disabled under reduced motion.
 
@@ -187,7 +188,7 @@ The blueprint's **System Overview** diagram (MOYLAN//OS platform at the centre, 
 Accessibility is a release blocker, not polish. Implementation status and the limits of automated testing are tracked in ARCHITECTURE §10–11.
 
 - **Content-first layering:** semantic HTML carries all content and navigation. WebGL, video, audio and AI chat are enhancements only. The site is fully usable with WebGL disabled.
-- **Reduced motion:** respect `prefers-reduced-motion` by default, and offer a visible **motion toggle** (Full / Reduced / Off) from the first milestone that has motion. "Off" pauses rendering entirely. Persisting the choice follows PRIVACY-COMPLIANCE §4.3 (stored only after the visitor actively changes it).
+- **Reduced motion:** respect `prefers-reduced-motion` by default, and offer a visible **motion control** (System / Full / Reduced / Off) from the first milestone that has motion. "Off" pauses rendering entirely. Implemented in Milestone 2.1 (ARCHITECTURE §10): System follows the OS live, and the choice is kept in memory only, never stored (PRIVACY-COMPLIANCE §4.3).
 - **Pause control:** any moving content > 5 seconds can be paused (WCAG 2.2.2).
 - **Keyboard:** full keyboard operation; logical focus order; skip link to main content; visible focus; Escape closes overlays; no keyboard traps.
 - **Route changes:** move focus to the new page's `<h1>` and announce the destination through a polite live region.

@@ -3,7 +3,6 @@ import { planStage, probeWebGL2, type CapabilitySignals } from "./capabilities";
 
 const capable: CapabilitySignals = {
   webgl2: true,
-  reducedMotion: false,
   saveData: false,
   coarsePointer: false,
   deviceMemory: 8,
@@ -11,45 +10,75 @@ const capable: CapabilitySignals = {
 };
 
 describe("planStage", () => {
-  it("gives capable desktops the high tier with full motion", () => {
-    expect(planStage(capable)).toEqual({ tier: 3, motion: "full", reason: "capable" });
+  it("gives capable desktops the high tier with full motion and pointer effects", () => {
+    expect(planStage(capable, "full")).toEqual({
+      tier: 3,
+      motion: "full",
+      pointerEffects: true,
+      reason: "capable",
+    });
   });
 
   it("never downloads 3D with Save-Data, even on capable hardware", () => {
-    expect(planStage({ ...capable, saveData: true })).toMatchObject({
+    expect(planStage({ ...capable, saveData: true }, "full")).toMatchObject({
       tier: 0,
+      pointerEffects: false,
       reason: "save-data",
     });
   });
 
   it("falls back to static without WebGL2", () => {
-    expect(planStage({ ...capable, webgl2: false })).toMatchObject({
+    expect(planStage({ ...capable, webgl2: false }, "full")).toMatchObject({
       tier: 0,
       reason: "no-webgl2",
     });
   });
 
-  it("respects reduced motion with the low tier and reduced motion mode", () => {
-    expect(planStage({ ...capable, reducedMotion: true })).toEqual({
+  it("uses the low tier with no pointer effects when motion is reduced", () => {
+    expect(planStage(capable, "reduced")).toEqual({
       tier: 1,
       motion: "reduced",
+      pointerEffects: false,
       reason: "reduced-motion",
     });
   });
 
+  it("does no 3D work at all when motion is off, on any device", () => {
+    for (const signals of [capable, { ...capable, coarsePointer: true }]) {
+      expect(planStage(signals, "off")).toEqual({
+        tier: 0,
+        motion: "off",
+        pointerEffects: false,
+        reason: "motion-off",
+      });
+    }
+  });
+
+  it("lets an explicit Full choice use the device's tier, but never overrides device limits", () => {
+    expect(planStage(capable, "full").tier).toBe(3);
+    expect(planStage({ ...capable, saveData: true }, "full").tier).toBe(0);
+    expect(planStage({ ...capable, deviceMemory: 2 }, "full").tier).toBe(1);
+  });
+
   it("uses the low tier on low-memory or low-core devices", () => {
-    expect(planStage({ ...capable, deviceMemory: 2 }).tier).toBe(1);
-    expect(planStage({ ...capable, hardwareConcurrency: 2 }).tier).toBe(1);
+    expect(planStage({ ...capable, deviceMemory: 2 }, "full")).toMatchObject({
+      tier: 1,
+      pointerEffects: true,
+      reason: "low-end-device",
+    });
+    expect(planStage({ ...capable, hardwareConcurrency: 2 }, "full").tier).toBe(1);
+    expect(planStage({ ...capable, deviceMemory: 2 }, "reduced").pointerEffects).toBe(false);
   });
 
   it("uses the medium tier for touch devices and mid-range memory", () => {
-    expect(planStage({ ...capable, coarsePointer: true }).tier).toBe(2);
-    expect(planStage({ ...capable, deviceMemory: 4 }).tier).toBe(2);
+    expect(planStage({ ...capable, coarsePointer: true }, "full").tier).toBe(2);
+    expect(planStage({ ...capable, deviceMemory: 4 }, "full").tier).toBe(2);
   });
 
   it("treats unknown memory/cores (non-Chromium browsers) as capable", () => {
     expect(
-      planStage({ ...capable, deviceMemory: undefined, hardwareConcurrency: undefined }).tier,
+      planStage({ ...capable, deviceMemory: undefined, hardwareConcurrency: undefined }, "full")
+        .tier,
     ).toBe(3);
   });
 });

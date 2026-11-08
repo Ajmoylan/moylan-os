@@ -26,7 +26,7 @@ export default function Contact() {
         <p>For roles, collaborations or questions about Alex&apos;s work.</p>
       </PageIntro>
 
-      <ul className="grid max-w-3xl gap-4 sm:grid-cols-2">
+      <ul className="grid max-w-3xl grid-cols-1 gap-4 sm:grid-cols-2">
         {channels.map((channel) => (
           <li key={channel.label} className="os-panel p-6">
             <p className="os-label">{channel.label}</p>
@@ -34,14 +34,14 @@ export default function Contact() {
               {channel.external ? (
                 <ExternalLink
                   href={channel.href}
-                  className="inline-flex min-h-11 items-center text-nex underline underline-offset-4"
+                  className="inline-flex min-h-11 items-center text-nex underline underline-offset-4 wrap-anywhere"
                 >
                   {channel.href.replace(/^https:\/\//, "")}
                 </ExternalLink>
               ) : (
                 <a
                   href={channel.href}
-                  className="inline-flex min-h-11 items-center text-nex underline underline-offset-4"
+                  className="inline-flex min-h-11 items-center text-nex underline underline-offset-4 wrap-anywhere"
                 >
                   {channel.href.replace(/^mailto:/, "")}
                 </a>

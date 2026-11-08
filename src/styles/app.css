@@ -29,6 +29,18 @@
   --font-mono: "Geist Mono Variable", ui-monospace, "SFMono-Regular", Menlo, monospace;
 
   --ease-os: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /*
+   * Fluid display sizes for the large headings' base (mobile) step; the sm/lg steps are
+   * unchanged. Exactly the previous size (text-5xl / text-4xl) on screens 360px and wider at
+   * normal text size, easing down slightly below that. The rem minimum keeps headings growing
+   * with the visitor's text-size setting (WCAG 1.4.4), while the vw term stops them outgrowing
+   * very narrow layouts.
+   */
+  --text-display: clamp(2.25rem, 13.333vw, 3rem);
+  --text-display--line-height: 1;
+  --text-title: clamp(1.875rem, 10vw, 2.25rem);
+  --text-title--line-height: calc(2.5 / 2.25);
 }
 
 /* ---- Agent accent scopes --------------------------------------------------------------- */
@@ -75,6 +87,32 @@
     text-rendering: optimizeLegibility;
   }
 
+  /*
+   * Long words never push the layout sideways (WCAG 1.4.10, 1.4.4). A word breaks only when it
+   * cannot fit on a line by itself, which never happens at normal text sizes, so ordinary text
+   * never splits. Headings use `anywhere`, which also lets their containers shrink around them.
+   */
+  body {
+    overflow-wrap: break-word;
+  }
+  h1,
+  h2,
+  h3 {
+    overflow-wrap: anywhere;
+  }
+  /*
+   * Very narrow layouts in rem terms only occur with enlarged text (e.g. 150–200% on a phone):
+   * there, hyphenate long words properly (lang="en-GB") instead of splitting them bare, which
+   * also evens out the very short lines. 18rem is 288px at the default text size, narrower than
+   * any current phone, so normal text is never hyphenated.
+   */
+  @media (width < 18rem) {
+    body {
+      -webkit-hyphens: auto;
+      hyphens: auto;
+    }
+  }
+
   ::selection {
     background-color: color-mix(in oklab, var(--accent) 35%, transparent);
     color: var(--color-text);
@@ -92,15 +130,33 @@
     outline: none;
   }
 
+  /*
+   * Motion policy (ARCHITECTURE §10). <html data-motion> is set by the motion store at runtime
+   * (src/motion/store.ts) and reflects the effective mode: full | reduced | off.
+   * - Before hydration and without JavaScript there is no attribute, so the OS media query applies.
+   * - System follows the OS live; explicit Reduced/Off collapse motion even if the OS allows it;
+   *   explicit Full keeps the site's (subtle) transitions even if the OS asks for reduced motion.
+   */
   @media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
+    :root:not([data-motion="full"]) *,
+    :root:not([data-motion="full"]) *::before,
+    :root:not([data-motion="full"]) *::after {
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
     }
+  }
+  :root[data-motion="reduced"] *,
+  :root[data-motion="reduced"] *::before,
+  :root[data-motion="reduced"] *::after,
+  :root[data-motion="off"] *,
+  :root[data-motion="off"] *::before,
+  :root[data-motion="off"] *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -206,6 +262,80 @@
   .os-pathway:hover .os-arrow,
   .os-pathway:focus-within .os-arrow {
     transform: translateX(4px);
+  }
+  /* Reduced/Off: no pointer-driven movement. The colour and glow feedback stays. */
+  :root[data-motion="reduced"] .os-pathway,
+  :root[data-motion="off"] .os-pathway,
+  :root[data-motion="reduced"] .os-pathway .os-arrow,
+  :root[data-motion="off"] .os-pathway .os-arrow {
+    transform: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-motion]) .os-pathway,
+    :root:not([data-motion]) .os-pathway .os-arrow {
+      transform: none;
+    }
+  }
+
+  /*
+   * Header disclosures (motion panel, mobile menu) never extend past the bottom of the viewport,
+   * so every control stays reachable on short screens (landscape phones, zoomed layouts). The cap
+   * is the viewport height minus the space above the panel's top edge (the header row's measured
+   * height, which grows when enlarged text wraps the header) and a bottom margin,
+   * including safe-area insets. `vh` is the fallback where dynamic viewport units (`dvh`, which
+   * track mobile browser toolbars) aren't supported. Contents scroll internally; overscroll is
+   * contained so scrolling the panel never scrolls the page behind it.
+   */
+  .os-header-panel {
+    /* The header row's measured height (SiteHeader); 4rem before measurement (one row). */
+    --os-panel-offset: calc(var(--os-header-row, 4rem) + 1px);
+    --os-panel-safe: env(safe-area-inset-top, 0px) + env(safe-area-inset-bottom, 0px);
+    max-height: calc(100vh - var(--os-panel-offset) - (var(--os-panel-safe)));
+    max-height: calc(100dvh - var(--os-panel-offset) - (var(--os-panel-safe)));
+  }
+  /* The motion panel floats 0.5rem below the header and keeps 0.5rem clear at the bottom. */
+  .os-motion-panel {
+    --os-panel-offset: calc(var(--os-header-row, 4rem) + 1.0625rem);
+  }
+  .os-header-panel-scroll {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  /*
+   * Anchored to the header's content container: full width (inset) on small screens, otherwise
+   * right-aligned with the header's padding and never wider than the space available.
+   */
+  .os-motion-panel {
+    left: max(1rem, env(safe-area-inset-left, 0px));
+    right: max(1rem, env(safe-area-inset-right, 0px));
+  }
+  @media (width >= 40rem) {
+    .os-motion-panel {
+      left: auto;
+      right: max(1.5rem, env(safe-area-inset-right, 0px));
+      width: min(20rem, 100% - 3rem);
+    }
+  }
+  @media (width >= 64rem) {
+    .os-motion-panel {
+      right: 2rem;
+    }
+  }
+
+  /* Motion control glyph: lit bars show the effective motion mode. */
+  .os-motion-glyph rect {
+    fill: var(--color-steel);
+    stroke: var(--color-text-subtle);
+    stroke-width: 0.5;
+    transition:
+      fill 200ms var(--ease-os),
+      stroke 200ms var(--ease-os);
+  }
+  .os-motion-glyph[data-motion="full"] rect,
+  .os-motion-glyph[data-motion="reduced"] rect:first-child {
+    fill: var(--accent);
+    stroke: var(--accent);
   }
 
   /* Status badge (truthfulness rule). */

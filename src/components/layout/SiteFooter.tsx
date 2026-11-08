@@ -11,7 +11,7 @@ export function SiteFooter() {
 
   return (
     <footer className="mt-24 border-t border-steel/60 bg-obsidian/60">
-      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-[1.4fr_1fr_1fr_1fr] lg:px-8">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-10 px-4 py-14 sm:px-6 md:grid-cols-[1.4fr_1fr_1fr_1fr] lg:px-8">
         <div>
           <p className="font-semibold tracking-[0.14em]">
             MOYLAN<span className="text-nex">//OS</span>

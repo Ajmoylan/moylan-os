@@ -30,7 +30,7 @@ export function PathwayCard({
       className={`os-pathway os-panel relative flex flex-col p-6 ${className}`}
     >
       <div className="flex items-center justify-between gap-4">
-        <p className="os-label">{label}</p>
+        <p className="min-w-0 os-label">{label}</p>
         <AgentIcon id={agentId} className="size-6 shrink-0 text-(--accent)" />
       </div>
       <h3 className="mt-6 text-xl font-semibold tracking-tight">
