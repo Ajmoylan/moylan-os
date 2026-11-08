@@ -9,6 +9,25 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    # Deferred major upgrades (docs/ARCHITECTURE.md §2, "Deferred major upgrades").
+    # Major versions only: minor and patch releases of these packages still arrive. Dependabot
+    # alerts and the CI `npm audit` gates (production and full tree) are unaffected by these rules.
+    # A vulnerability that can only be fixed by one of these major upgrades must be reviewed and
+    # prioritised despite these exclusions (docs/SECURITY.md §10.1).
+    ignore:
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@eslint/js"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # React Router packages stay together on v7 until a coordinated v8 migration is scheduled.
+      - dependency-name: "react-router"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@react-router/dev"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@react-router/node"
+        update-types: ["version-update:semver-major"]
     cooldown:
       default-days: 7
       semver-major-days: 14
