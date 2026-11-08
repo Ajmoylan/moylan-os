@@ -1,44 +1,12 @@
-import type { Page } from "@playwright/test";
+import { settle, stubDevice, trackStageRequests } from "./device";
 import { expect, test } from "./fixtures";
 
 /**
  * The WebGL stage pipeline (ARCHITECTURE §9.4): the 3D chunk loads lazily after hydration, only
  * when local capability checks allow it, and never with Save-Data or without WebGL2.
- * WebGL2 availability is stubbed so results don't depend on the CI machine's GPU.
+ * WebGL2 availability is stubbed so results don't depend on the CI machine's GPU. Runtime motion
+ * preference behaviour is covered in motion.spec.ts.
  */
-
-async function stubDevice(
-  page: Page,
-  { webgl2, saveData = false }: { webgl2: boolean; saveData?: boolean },
-) {
-  await page.addInitScript(
-    ([available, save]) => {
-      const original = HTMLCanvasElement.prototype.getContext;
-      // @ts-expect-error: test stub replacing an overloaded DOM method
-      HTMLCanvasElement.prototype.getContext = function (type: string, ...args: unknown[]) {
-        if (type === "webgl2")
-          return available ? { getExtension: () => ({ loseContext() {} }) } : null;
-        return original.call(this, type, ...args);
-      };
-      Object.defineProperty(Navigator.prototype, "connection", {
-        configurable: true,
-        get: () => ({ saveData: save }),
-      });
-    },
-    [webgl2, saveData] as const,
-  );
-}
-
-function trackStageRequests(page: Page) {
-  const requests: string[] = [];
-  page.on("request", (request) => {
-    if (/\/assets\/Stage-[\w-]+\.js$/.test(request.url())) requests.push(request.url());
-  });
-  return requests;
-}
-
-/** Long enough for requestIdleCallback's 2 s timeout to have fired. */
-const settle = (page: Page) => page.waitForTimeout(2500);
 
 test("with WebGL2, the stage loads lazily after the page and follows the route's agent", async ({
   page,
@@ -85,6 +53,7 @@ test.describe("reduced motion", () => {
     const stage = page.locator(".os-stage");
     await expect(stage).toHaveAttribute("data-stage-tier", "1");
     await expect(stage).toHaveAttribute("data-stage-motion", "reduced");
+    await expect(stage).toHaveAttribute("data-stage-pointer", "off");
   });
 });
 

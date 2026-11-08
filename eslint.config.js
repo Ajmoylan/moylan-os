@@ -60,6 +60,15 @@ export default tseslint.config(
     },
   },
   {
+    // The 3D layer mutates Three.js objects (uniforms, geometry draw ranges, render targets) in
+    // effects and the render loop by design: ADR-007 keeps per-frame state out of React. This
+    // React Compiler rule (the project doesn't use the compiler) treats those objects as
+    // immutable React values, so it is disabled for src/experience/ only. All other hook rules
+    // stay on here, and the rule stays on for the DOM application.
+    files: ["src/experience/**/*.{ts,tsx}"],
+    rules: { "react-hooks/immutability": "off" },
+  },
+  {
     files: ["scripts/**/*.mjs", "*.config.{js,ts}", "tests/**/*.ts"],
     languageOptions: { globals: { ...globals.node } },
   },

@@ -1,6 +1,6 @@
 # MOYLAN//OS — Privacy and Compliance
 
-**Status:** v0.3 · 7 November 2026 · applies from Milestone 1 onward (v0.3: browser-caching correction after independent review)
+**Status:** v0.5 · 8 November 2026 · applies from Milestone 1 onward (v0.3: browser-caching correction after independent review; v0.4: motion preference kept in memory only, Milestone 2.1; §4.4 WebGL environment, Milestone 2.2; v0.5: §4.4 pointer-data retention described precisely after independent review)
 **Companion documents:** [`SECURITY.md`](SECURITY.md) (including the pre-deployment gate in §13) · [`ARCHITECTURE.md`](ARCHITECTURE.md)
 
 > **Not legal advice.** This document records the project's privacy design decisions and the regulatory sources they rely on. Have anything uncertain checked against current guidance from Datatilsynet and Nkom, or by a qualified adviser, before launch. Items marked **⚠ verify** weren't confirmed from primary sources while this was written.
@@ -55,7 +55,7 @@ A lightweight record is kept even though Article 30(5) may exempt a private indi
 | P1 | Web hosting and delivery | IP address, request URL, user agent, timestamp, response metadata | Deliver the website; keep it secure and available | GDPR Art. 6(1)(f) legitimate interests (operating a secure website) | Microsoft (Azure Static Web Apps) under the Microsoft Products and Services Data Protection Addendum | Platform-defined; the controller does **not** enable additional request logging or Application Insights in v1. **⚠ verify** current Microsoft retention terms | v1 |
 | P2 | Email from visitors | Name, email address, message content | Reply to enquiries (recruitment, collaboration) | Art. 6(1)(f), or 6(1)(b) steps prior to a contract at the visitor's request | Alex's email provider | Delete within 12 months after the conversation ends unless an engagement follows | v1 |
 | P0 | First-party browser HTTP cache | The site's public files only; no personal data | Deliver requested pages efficiently | Not personal data; ekomloven § 3-15(2) exemption assessment in §4.1 ⚠ verify | None (visitor's browser) | Per `Cache-Control` (≤ 1 year for hashed assets; HTML revalidated every visit) | v1 |
-| P3 | Motion/display preference (if persisted) | `motion: full \| reduced \| off`, no identifier | Remember an accessibility preference the visitor explicitly set | Not personal data; ekomloven § 3-15(2)(b) exemption assessment in §4.3 | None (stays in the visitor's browser) | Until the visitor changes or clears it | Milestone 2+, decision pending |
+| P3 | Motion preference | `system \| full \| reduced \| off`, no identifier | Apply an accessibility preference the visitor chose on the site | Not personal data; not persisted to device storage. Any transient in-memory state is strictly necessary for the function the visitor requested (§4.3) ⚠ verify | None (JavaScript memory in the visitor's own tab only) | Until the page is reloaded or closed | Implemented in Milestone 2.1: in memory only, never persisted |
 | P4 | Optional AI agent chat | Visitor's typed questions, IP address (rate limiting) | Answer questions about the portfolio | Art. 6(1)(f) | Azure Functions + LLM provider (DPA required) | Prompts not stored by default; rate-limit counters ≤ 24 h | Version 2, not built |
 | P5 | Optional contact form | Name, email, message | As P2 | As P2 | Azure Functions + email delivery service | As P2 | Not planned for v1 |
 | P6 | Optional analytics | See §5 | Understand aggregate site usage | Consent (§5) | TBD | TBD | Not in v1 |
@@ -96,14 +96,21 @@ Characteristics: first-party only; contains only the site's own public files (no
 3. Document every item (name, purpose, duration, exemption or consent basis) in the privacy notice.
 4. Re-run the DevTools verification from SECURITY.md §13 on every route.
 
-### 4.3 Planned motion preference (Milestone 2+): assessment
+### 4.3 Motion preference (Milestone 2.1): decision
 
-The DESIGN-BRIEF calls for a visible motion toggle (Full / Reduced / Off). Proposed handling:
-- The toggle works **for the current page view without any storage**.
-- Persisting the choice in `localStorage` happens **only after the visitor actively changes the toggle**. The stored value is a single non-identifying preference that isn't shared with anyone. Choosing **System** (the default, which follows the OS setting) removes the stored value (ARCHITECTURE §10, motion preference policy).
-- The assessment is that this is *strictly necessary to provide a function the user has explicitly requested* (remembering their accessibility choice), comparable to the "user-interface customisation" exemption in the EDPB/WP29 cookie-exemption guidance. Nkom stresses that the exemptions are narrow, so this is disclosed in the privacy notice and stays minimal.
-- **Conservative alternative** if you prefer zero storage: don't persist the toggle; rely on `prefers-reduced-motion` across visits.
+The site has a visible motion control (System / Full / Reduced / Off; ARCHITECTURE §10). **Decision: the conservative option. The choice is kept in JavaScript memory only and never persisted.**
+- Nothing is written to cookies, `localStorage`, `sessionStorage`, IndexedDB, Cache Storage or any other device storage, and nothing is sent anywhere. The choice applies across client-side navigation within one visit; a reload or new visit starts on **System**, which follows the visitor's OS setting (`prefers-reduced-motion`) and so already respects a lasting accessibility preference without the site storing anything.
+- Reading the `prefers-reduced-motion` media query reads a standard browser setting through CSS/`matchMedia`. It's used only in the browser to adapt the page and is never transmitted.
+- **Assessment:** recent EDPB guidance reads the device-storage rules broadly. Even if the transient in-memory value or the media-query read were considered within ekomloven § 3-15, both are *strictly necessary to provide a function the visitor has explicitly requested* (applying their motion choice or their OS accessibility setting), so no consent is needed. **⚠ Verify** together with the §4.1 caching assessment before launch.
+- Verified by automated tests: unit tests spy on `Storage.prototype.setItem`, and end-to-end tests check web storage, IndexedDB, Cache Storage, cookies and third-party requests after changing the setting, and confirm a reload returns to System.
+- **If persistence is ever wanted**, the previous assessment applies: store only after an explicit change; a single non-identifying value; choosing System removes it; assessed as *strictly necessary to provide a function the user has explicitly requested* (comparable to the "user-interface customisation" exemption in the EDPB/WP29 guidance). Nkom stresses that the exemptions are narrow, so this would need the privacy notice updating and the §4.2 checklist re-running first.
 
+
+### 4.4 WebGL environment (Milestone 2.2)
+
+- Pointer position and speed are read from `pointermove` events only to animate the background, and only while the stage runs with full motion. While it does, they are retained transiently in memory: the latest position and an eased velocity (overwritten on every movement) in JavaScript, and a fading velocity trace around recent cursor positions in the flow-map texture on the GPU, which decays within a few seconds. When the listeners are detached (Reduced or Off motion, Save-Data, leaving the page), the JavaScript values are reset and the flow-map texture is released. Where the flow map is unavailable, the latest position and velocity are instead copied into shader uniforms each frame; once pointer effects stop, those uniforms are no longer used but may keep their last values in memory until the stage unmounts and releases its material. Nothing is stored on the device, logged, read back, sent anywhere or used for any other purpose.
+- Capability detection stays local (ARCHITECTURE §9.4). The renderer string (`WEBGL_debug_renderer_info`) is never read, and no GPU benchmark or other third-party request is made. Every shader and particle position is generated in the browser; the stage loads only same-origin script.
+- The Network Information API's `saveData` flag (where the browser exposes it) is read only to decide whether to load or keep the 3D layer.
 ---
 
 ## 5. Analytics

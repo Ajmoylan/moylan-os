@@ -14,16 +14,17 @@ MOYLAN//OS is the portfolio of Alex Moylan, designed as a personal operating sys
 
 The site is meant to be a working engineering demonstration: cinematic where it adds value, and fast, accessible, secure and private underneath.
 
-> **Status: Milestone 1 complete.** This is the static, accessible foundation, and the permanent fallback for the experience. The interactive WebGL agent system (one morphing GPU particle system shared by all five agents) is next. See [docs/ARCHITECTURE.md §15](docs/ARCHITECTURE.md#15-implementation-plan).
+> **Status: Milestone 2.2 implemented (first living WebGL environment).** A GPU particle field with a pointer flow map now runs behind the content where devices and motion settings allow; the static, accessible foundation remains the permanent fallback. The NEX avatar and the agent system (one morphing GPU particle system shared by all five agents) come next. See [docs/ARCHITECTURE.md §15](docs/ARCHITECTURE.md#15-implementation-plan).
 
-## Features (Milestone 1)
+## Features
 
 - **Prerendered pages:** every route is static HTML generated at build time, then hydrated. With JavaScript disabled, every page still shows its content and footer navigation (tested on every route). The mobile header menu needs JavaScript.
 - **Agent-driven information architecture:** a typed route manifest maps every URL (including the 404 page and future project case studies) to its host agent.
-- **Accessibility:** semantic landmarks, skip link, focus management on navigation, 44×44 touch targets, reduced-motion support, AA-contrast colour tokens. Every page is checked with axe-core on desktop and mobile.
+- **Accessibility:** semantic landmarks, skip link, focus management on navigation, 44×44 touch targets, AA-contrast colour tokens. Every page is checked with axe-core on desktop and mobile.
+- **Motion preferences:** a header control with System, Full, Reduced and Off. System follows the operating system's reduced-motion setting live. The choice drives CSS transitions and the 3D stage plan, and it is kept in memory only.
 - **Security by design:** a hash-based Content Security Policy with no `unsafe-inline` or `unsafe-eval`, hardened headers, real 404s, no source maps, hardened outbound links, and SHA-pinned CI with CodeQL, dependency review and Dependabot.
 - **Privacy by default:** no cookies, web storage, analytics, tracking or third-party requests. Fonts are self-hosted. All of this is verified by tests.
-- **Ready for 3D:** a root-level adapter lazy-loads the WebGL stage only when local capability checks allow it (never with Save-Data or without WebGL2). The build enforces separate JS budgets for the initial app and the 3D chunk.
+- **Living WebGL environment:** a lazy-loaded Three.js / React Three Fiber stage renders thousands of GPU-animated particles in one draw call, with a shared pointer flow map (inject → advect → dissipate). It loads only when local capability checks allow it (never with Save-Data or without WebGL2), follows the motion setting live, pauses in hidden tabs, steps quality down when frames run slow (within a backing-pixel limit on large displays) and recovers from WebGL context loss. The build enforces separate JS budgets for the initial app and the 3D chunk.
 
 ## Architecture
 
@@ -43,9 +44,9 @@ Full detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Technology
 
-React 19 · React Router 7 · TypeScript 6 (strict) · Vite 8 · Tailwind CSS 4 · Geist (self-hosted) · Vitest + Testing Library · Playwright + axe-core · ESLint (jsx-a11y strict) · Prettier · GitHub Actions · Azure Static Web Apps (planned)
+React 19 · React Router 7 · TypeScript 6 (strict) · Vite 8 · Tailwind CSS 4 · Zustand · Geist (self-hosted) · Vitest + Testing Library · Playwright + axe-core · ESLint (jsx-a11y strict) · Prettier · GitHub Actions · Azure Static Web Apps (planned)
 
-Planned for the WebGL milestones: Three.js, React Three Fiber, GLSL, GSAP.
+WebGL: Three.js, React Three Fiber, GLSL. Planned: GSAP.
 
 ## Getting started
 
@@ -68,7 +69,7 @@ npm run audit:prod   # production dependency audit (high/critical)
 npm run audit:all    # full dependency-tree audit (high/critical)
 ```
 
-End-to-end tests run against the production build, served with the same headers Azure will send. They cover every route's rendering, axe accessibility checks, CSP violations, security headers, touch targets, keyboard and focus behaviour, no-JavaScript and reduced-motion modes, the absence of cookies, storage and third-party requests, and the lazy 3D loading rules.
+End-to-end tests run against the production build, served with the same headers Azure will send. They cover every route's rendering, axe accessibility checks, CSP violations, security headers, touch targets, keyboard and focus behaviour, no-JavaScript mode, runtime motion preferences (including live operating-system changes), the absence of cookies, storage and third-party requests, and the lazy 3D loading rules.
 
 ## Documentation
 

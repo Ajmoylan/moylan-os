@@ -25,7 +25,7 @@ export default function Projects() {
         </p>
       </PageIntro>
 
-      <ul className="grid gap-4 md:grid-cols-2">
+      <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {projects.map((project) => {
           const owner = agents[project.agent];
           return (
@@ -57,7 +57,7 @@ export default function Projects() {
           {caseStudiesInPreparation.map((title) => (
             <li key={title} className="flex gap-3">
               <span aria-hidden="true" className="mt-2.5 size-1.5 shrink-0 rounded-full bg-syn" />
-              {title}
+              <span className="min-w-0">{title}</span>
             </li>
           ))}
         </ul>

@@ -38,7 +38,7 @@ export default function Home() {
       <Container>
         <section
           aria-labelledby="hero-title"
-          className="grid items-center gap-12 pt-14 pb-20 sm:pt-20 lg:min-h-[calc(100dvh-4rem)] lg:grid-cols-[1.05fr_0.95fr] lg:py-16"
+          className="grid grid-cols-1 items-center gap-12 pt-14 pb-20 sm:pt-20 lg:min-h-[calc(100dvh-4rem)] lg:grid-cols-[1.05fr_0.95fr] lg:py-16"
         >
           <div>
             <p className="os-label">
@@ -50,7 +50,7 @@ export default function Home() {
             </p>
             <h1
               id="hero-title"
-              className="mt-6 text-5xl font-semibold tracking-tight sm:text-6xl lg:text-7xl"
+              className="mt-6 text-display font-semibold tracking-tight sm:text-6xl lg:text-7xl"
             >
               {site.owner}
             </h1>
@@ -106,7 +106,7 @@ export default function Home() {
             guides and browse everything directly.
           </p>
 
-          <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {specialists.map((agent) => (
               <PathwayCard
                 key={agent.id}
@@ -140,7 +140,7 @@ export default function Home() {
             MOYLAN//OS is itself a piece of work: a cinematic interface built on a foundation that
             stays fast, accessible and secure even without WebGL.
           </p>
-          <ul className="mt-10 grid gap-px overflow-hidden rounded-[14px] border border-steel bg-steel sm:grid-cols-2 lg:grid-cols-4">
+          <ul className="mt-10 grid grid-cols-1 gap-px overflow-hidden rounded-[14px] border border-steel bg-steel sm:grid-cols-2 lg:grid-cols-4">
             {principles.map((item, index) => (
               <li key={item.title} className="bg-abyss p-6">
                 <p className="font-mono text-xs text-nex" aria-hidden="true">

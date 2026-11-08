@@ -18,7 +18,7 @@ export default function NotFound() {
     <Container className="py-24 sm:py-32">
       <div data-agent="nex" className="max-w-2xl">
         <p className="os-label">Error 404 · Route not found</p>
-        <h1 className="mt-5 text-4xl font-semibold tracking-tight sm:text-5xl">Page not found</h1>
+        <h1 className="mt-5 text-title font-semibold tracking-tight sm:text-5xl">Page not found</h1>
         <p className="mt-6 text-lg text-text-muted">
           NEX couldn&apos;t find that address in MOYLAN//OS. It may have moved, or it may not exist
           yet.

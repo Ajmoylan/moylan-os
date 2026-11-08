@@ -66,7 +66,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
       <title>{pageTitle(heading)}</title>
       <Container className="py-24">
         <p className="os-label">{isResponse ? `Error ${error.status}` : "System error"}</p>
-        <h1 className="mt-5 text-4xl font-semibold tracking-tight">{heading}</h1>
+        <h1 className="mt-5 text-title font-semibold tracking-tight">{heading}</h1>
         <p className="mt-6 max-w-xl text-text-muted">
           This part of MOYLAN//OS couldn&apos;t be displayed. Please return to the home page and try
           again.
