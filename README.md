@@ -14,7 +14,7 @@ MOYLAN//OS is the portfolio of Alex Moylan, designed as a personal operating sys
 
 The site is meant to be a working engineering demonstration: cinematic where it adds value, and fast, accessible, secure and private underneath.
 
-> **Status: Milestone 2.1 implemented (runtime motion preferences).** The static, accessible foundation from Milestone 1 is the permanent fallback for the experience. The interactive WebGL agent system (one morphing GPU particle system shared by all five agents) is next. See [docs/ARCHITECTURE.md §15](docs/ARCHITECTURE.md#15-implementation-plan).
+> **Status: Milestone 2.2 implemented (first living WebGL environment).** A GPU particle field with a pointer flow map now runs behind the content where devices and motion settings allow; the static, accessible foundation remains the permanent fallback. The NEX avatar and the agent system (one morphing GPU particle system shared by all five agents) come next. See [docs/ARCHITECTURE.md §15](docs/ARCHITECTURE.md#15-implementation-plan).
 
 ## Features
 
@@ -24,7 +24,7 @@ The site is meant to be a working engineering demonstration: cinematic where it 
 - **Motion preferences:** a header control with System, Full, Reduced and Off. System follows the operating system's reduced-motion setting live. The choice drives CSS transitions and the 3D stage plan, and it is kept in memory only.
 - **Security by design:** a hash-based Content Security Policy with no `unsafe-inline` or `unsafe-eval`, hardened headers, real 404s, no source maps, hardened outbound links, and SHA-pinned CI with CodeQL, dependency review and Dependabot.
 - **Privacy by default:** no cookies, web storage, analytics, tracking or third-party requests. Fonts are self-hosted. All of this is verified by tests.
-- **Ready for 3D:** a root-level adapter lazy-loads the WebGL stage only when local capability checks allow it (never with Save-Data or without WebGL2). The build enforces separate JS budgets for the initial app and the 3D chunk.
+- **Living WebGL environment:** a lazy-loaded Three.js / React Three Fiber stage renders thousands of GPU-animated particles in one draw call, with a shared pointer flow map (inject → advect → dissipate). It loads only when local capability checks allow it (never with Save-Data or without WebGL2), follows the motion setting live, pauses in hidden tabs, steps quality down when frames run slow (within a backing-pixel limit on large displays) and recovers from WebGL context loss. The build enforces separate JS budgets for the initial app and the 3D chunk.
 
 ## Architecture
 
@@ -46,7 +46,7 @@ Full detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 React 19 · React Router 7 · TypeScript 6 (strict) · Vite 8 · Tailwind CSS 4 · Zustand · Geist (self-hosted) · Vitest + Testing Library · Playwright + axe-core · ESLint (jsx-a11y strict) · Prettier · GitHub Actions · Azure Static Web Apps (planned)
 
-Planned for the WebGL milestones: Three.js, React Three Fiber, GLSL, GSAP.
+WebGL: Three.js, React Three Fiber, GLSL. Planned: GSAP.
 
 ## Getting started
 

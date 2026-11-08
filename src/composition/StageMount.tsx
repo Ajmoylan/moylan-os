@@ -1,4 +1,13 @@
-import { Component, Suspense, lazy, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  Component,
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { useLocation } from "react-router";
 import {
   planStage,
@@ -20,7 +29,9 @@ import { agentForPath } from "~/routing/agent-for-path";
  *      (ARCHITECTURE §10). It is recomputed whenever the motion mode changes, without re-probing.
  *   4. Tier 0 (motion Off, Save-Data, no WebGL2, software rendering): nothing is downloaded and the
  *      static design stays. Switching to Off later unmounts a loaded stage.
- *   5. Otherwise the stage chunk is imported. Any load or render failure falls back to static.
+ *   5. Otherwise the stage chunk is imported. Any load or render failure, or the stage reporting
+ *      that WebGL is unavailable (context lost for too long or too often), falls back to static
+ *      for the rest of the visit.
  *
  * Re-renders only on route changes and effective-motion changes (one primitive store slice).
  */
@@ -55,6 +66,10 @@ function whenIdle(callback: () => void): () => void {
   return () => window.clearTimeout(handle);
 }
 
+interface NetworkConnection extends EventTarget {
+  saveData?: boolean;
+}
+
 export function StageMount() {
   const { pathname } = useLocation();
   const motion = useEffectiveMotion();
@@ -71,15 +86,35 @@ export function StageMount() {
     return whenIdle(() => setSignals(readCapabilitySignals()));
   }, [needsSignals]);
 
+  // Save-Data can change during a visit. Where the browser reports it (the Network Information
+  // API's `change` event, Chromium-based browsers), switching it on drops to tier 0, which
+  // unmounts the stage and releases its GPU resources; switching it off allows the stage again.
+  // Elsewhere it stays as sampled at initial detection.
+  const probed = signals !== null;
+  useEffect(() => {
+    if (!probed) return;
+    const connection = (navigator as Navigator & { connection?: NetworkConnection }).connection;
+    if (typeof connection?.addEventListener !== "function") return;
+    const onChange = () =>
+      setSignals((current) => {
+        const saveData = connection.saveData === true;
+        return current && current.saveData !== saveData ? { ...current, saveData } : current;
+      });
+    connection.addEventListener("change", onChange);
+    return () => connection.removeEventListener("change", onChange);
+  }, [probed]);
+
+  const markFailed = useCallback(() => setFailed(true), []);
+
   // Memoised so the stage receives a stable plan object between unrelated renders.
   const plan = useMemo(() => (signals ? planStage(signals, motion) : null), [signals, motion]);
 
   if (failed || !plan || plan.tier === 0) return null;
 
   return (
-    <StageBoundary onFail={() => setFailed(true)}>
+    <StageBoundary onFail={markFailed}>
       <Suspense fallback={null}>
-        <Stage agent={agentForPath(pathname)} plan={plan} />
+        <Stage agent={agentForPath(pathname)} plan={plan} onUnavailable={markFailed} />
       </Suspense>
     </StageBoundary>
   );

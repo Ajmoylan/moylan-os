@@ -75,9 +75,13 @@
     text-size-adjust: 100%;
   }
 
+  /*
+   * No body background: <html> provides the page colour. A body background would paint over the
+   * fixed negative-z layers behind the content (the static backdrop at z −2 and the WebGL stage at
+   * z −1), hiding them; it did hide the backdrop until Milestone 2.2.
+   */
   body {
     min-height: 100dvh;
-    background-color: var(--color-obsidian);
     color: var(--color-text);
     font-family: var(--font-sans);
     font-feature-settings: "ss01", "cv11";
@@ -190,6 +194,23 @@
     inset: 0;
     z-index: -1;
     pointer-events: none;
+  }
+  /*
+   * The canvas fades in only after its first frame, so the static design is never covered by an
+   * empty canvas; it fades out at once when the WebGL context is lost (no frozen frame). Under
+   * reduced/off motion the global rules collapse the transition to an instant change.
+   */
+  .os-stage canvas {
+    opacity: 0;
+    transition: opacity 1200ms var(--ease-os);
+  }
+  .os-stage[data-stage-state="running"] canvas,
+  .os-stage[data-stage-state="static"] canvas,
+  .os-stage[data-stage-state="paused"] canvas {
+    opacity: 1;
+  }
+  .os-stage[data-stage-state="lost"] canvas {
+    transition-duration: 150ms;
   }
 
   /* "// LABEL" system voice. */
