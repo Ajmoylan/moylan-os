@@ -1,4 +1,5 @@
 import { Vector3 } from "three";
+import { NEX_HOT, registryPalette } from "../agents/palette";
 import type { QualityTier } from "../capabilities";
 
 /**
@@ -72,7 +73,8 @@ export function rgb(hex: string): Vector3 {
 }
 
 /** NEX cyan/teal (DESIGN-BRIEF §2): nex-deep, nex and a pale cyan highlight. */
-export const nexPalette: Palette = { base: "#14a89c", accent: "#3fe0d0", hot: "#c9fbf5" };
+/** NEX's palette, from the agent registry plus its WebGL-only highlight (Milestone 2.4b.1a). */
+export const nexPalette: Palette = registryPalette("nex", NEX_HOT);
 
 /**
  * Tunable look of the ambient field. Values are deliberately restrained: the field should feel

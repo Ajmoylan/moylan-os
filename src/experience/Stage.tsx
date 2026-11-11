@@ -11,11 +11,12 @@ import type { AgentId } from "~/agents/registry";
 import { AmbientField } from "./ambient/AmbientField";
 import { ambientLook, settingsForTier } from "./ambient/config";
 import type { StagePlan } from "./capabilities";
+import { AgentCore } from "./core/AgentCore";
+import { ShapeCache } from "./core/shapeCache";
 import { Engine, type CameraOptions, type FrameLoop } from "./engine/Engine";
 import { forgetValidatedFormat } from "./flow/FlowField";
 import { FlowSimulation } from "./flow/FlowSimulation";
 import { createInteraction, type StageInteraction } from "./flow/interaction";
-import { NexAvatar } from "./nex/NexAvatar";
 import { NEX_PARAMS } from "./nex/params";
 import { CAMERA_DISTANCE } from "./nex/placement";
 import {
@@ -26,6 +27,8 @@ import {
   resolveDprCap,
   type Quality,
 } from "./performance/quality";
+import { createTransition, type StageTransition } from "./transition/StageTransition";
+import { TransitionClock } from "./transition/TransitionClock";
 
 export interface StageProps {
   /** Agent hosting the current URL (from the route manifest). */
@@ -77,11 +80,24 @@ function subscribeResize(onChange: () => void) {
 
 type LifecycleState = "starting" | "running" | "lost";
 
-/** The stage's layers. The engine runs them in phase order whatever order they are added in. */
+/**
+ * The stage's layers. The engine runs them in phase order (simulate: flow, transition clock;
+ * update: ambient field, AgentCore), and within a phase in the order they are added.
+ */
 export interface StageLayers {
   flow: FlowSimulation;
+  clock: TransitionClock;
   ambient: AmbientField;
-  nex: NexAvatar;
+  core: AgentCore;
+}
+
+/** Stage-lifetime state shared by the layers (ADR-007): it survives context restores. */
+export interface StageShared {
+  stage: HTMLElement;
+  interaction: StageInteraction;
+  transition: StageTransition;
+  shapes: ShapeCache;
+  onQualityStep: (next: Quality) => void;
 }
 
 /**
@@ -89,22 +105,20 @@ export interface StageLayers {
  * layers already created are disposed before the error propagates, and the engine never sees a
  * partial set.
  */
-export function createLayers(
-  engine: Engine,
-  stage: HTMLElement,
-  interaction: StageInteraction,
-  onQualityStep: (next: Quality) => void,
-): StageLayers {
+export function createLayers(engine: Engine, shared: StageShared): StageLayers {
+  const { stage, interaction, transition, shapes, onQualityStep } = shared;
   const created: { dispose(): void }[] = [];
   try {
     const flow = new FlowSimulation(engine, { stage, interaction });
     created.push(flow);
+    const clock = new TransitionClock(engine, { transition });
+    created.push(clock);
     const ambient = new AmbientField(engine, { stage, interaction, onQualityStep });
     created.push(ambient);
-    const nex = new NexAvatar(engine, { stage, interaction });
-    created.push(nex);
-    for (const layer of [flow, ambient, nex]) engine.add(layer);
-    return { flow, ambient, nex };
+    const core = new AgentCore(engine, { stage, interaction, transition, shapes });
+    created.push(core);
+    for (const layer of [flow, clock, ambient, core]) engine.add(layer);
+    return { flow, clock, ambient, core };
   } catch (error) {
     for (const layer of created.reverse()) {
       try {
@@ -118,7 +132,7 @@ export function createLayers(
 }
 
 function disposeLayers(engine: Engine, layers: StageLayers): void {
-  for (const layer of [layers.nex, layers.ambient, layers.flow]) {
+  for (const layer of [layers.core, layers.ambient, layers.clock, layers.flow]) {
     engine.remove(layer);
     layer.dispose();
   }
@@ -160,6 +174,10 @@ export default function Stage({ agent, plan, path = "/", onUnavailable }: StageP
    * pointer listener and flow map), read by every layer. A stable mutable object (ADR-007).
    */
   const [interaction] = useState(() => createInteraction(ambientLook.cursor.radius));
+  /** The shared transition frame (ADR-007): written by the transition clock, read by agents. */
+  const [transition] = useState(() => createTransition("nex"));
+  /** Generated agent shapes, kept for the stage's lifetime (a context restore reuses them). */
+  const [shapes] = useState(() => new ShapeCache());
   const [lifecycle, setLifecycle] = useState<LifecycleState>("starting");
   const [quality, setQuality] = useState<Quality>(FULL_QUALITY);
   const onQualityStep = useCallback((next: Quality) => setQuality((q) => lowerOf(q, next)), []);
@@ -279,7 +297,7 @@ export default function Stage({ agent, plan, path = "/", onUnavailable }: StageP
     if (!engine || !stage) return;
     let layers: StageLayers;
     try {
-      layers = createLayers(engine, stage, interaction, onQualityStep);
+      layers = createLayers(engine, { stage, interaction, transition, shapes, onQualityStep });
     } catch (error) {
       fail(error);
       return;
@@ -298,7 +316,7 @@ export default function Stage({ agent, plan, path = "/", onUnavailable }: StageP
       if (releaseLayers.current === release) releaseLayers.current = () => {};
       release();
     };
-  }, [generation, interaction, onQualityStep, fail]);
+  }, [generation, interaction, transition, shapes, onQualityStep, fail]);
 
   const status =
     lifecycle === "lost"
@@ -334,14 +352,15 @@ export default function Stage({ agent, plan, path = "/", onUnavailable }: StageP
           particleShare: quality.particleShare,
           motion: plan.motion,
         });
-        const nexChanged = layers.nex.setProps({
+        const clockChanged = layers.clock.setProps({ agent });
+        const coreChanged = layers.core.setProps({
           particles: settings.nex.particles,
           particleShare: quality.particleShare,
           glowLayer: settings.nex.glowLayer,
           motion: plan.motion,
           path,
         });
-        changed = flowChanged || ambientChanged || nexChanged;
+        changed = flowChanged || ambientChanged || clockChanged || coreChanged;
       }
       // The adapted range (display and zoom changes are followed inside the engine).
       engine.setDpr(dpr);

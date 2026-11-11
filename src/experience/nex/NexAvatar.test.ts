@@ -1,9 +1,11 @@
 import { BufferGeometry, PerspectiveCamera, Scene, ShaderMaterial } from "three";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ShapeModule from "./shape";
+import { nexPalette, rgb } from "../ambient/config";
 import type { Engine } from "../engine/Engine";
 import { createInteraction } from "../flow/interaction";
 import { NexAvatar, type NexAvatarProps } from "./NexAvatar";
+import { generateNexShape } from "./shape";
 
 /**
  * NEX as an engine layer (Milestone 2.4a): change reporting, transactional construction and
@@ -63,7 +65,17 @@ const props = (overrides: Partial<NexAvatarProps> = {}): NexAvatarProps => ({
   ...overrides,
 });
 
-const nex = () => new NexAvatar(engine, { stage, interaction: createInteraction(0.1) });
+const nex = () =>
+  new NexAvatar(engine, {
+    stage,
+    interaction: createInteraction(0.1),
+    colours: {
+      deep: rgb(nexPalette.base),
+      accent: rgb(nexPalette.accent),
+      hot: rgb(nexPalette.hot),
+    },
+    shape: (count) => generateNexShape(count),
+  });
 
 beforeEach(() => {
   faults.anchorAttach = false;

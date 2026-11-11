@@ -43,7 +43,10 @@ function gaussian(random: () => number): number {
   return Math.sqrt(-2 * Math.log(Math.max(1e-7, random()))) * Math.cos(2 * Math.PI * random());
 }
 
-export function generateNexShape(count: number, seed = 0x6e6578): NexShape {
+/** NEX's approved generator seed ("nex"): the shape every visitor sees. */
+export const NEX_SEED = 0x6e6578;
+
+export function generateNexShape(count: number, seed = NEX_SEED): NexShape {
   const random = createRandom(seed);
   const positions = new Float32Array(count * 3);
   const orbits = new Float32Array(count);

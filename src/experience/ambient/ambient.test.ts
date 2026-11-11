@@ -34,7 +34,13 @@ describe("tier settings (ARCHITECTURE §9.2)", () => {
   });
 
   it("keeps the look restrained and in the NEX palette", () => {
-    expect(ambientLook.palette).toEqual({ base: "#14a89c", accent: "#3fe0d0", hot: "#c9fbf5" });
+    // From the agent registry since Milestone 2.4b.1a (its tokens are upper-case hex).
+    const { base, accent, hot } = ambientLook.palette;
+    expect([base, accent, hot].map((hex) => hex.toLowerCase())).toEqual([
+      "#14a89c",
+      "#3fe0d0",
+      "#c9fbf5",
+    ]);
     expect(ambientLook.brightness).toBeLessThanOrEqual(1);
     expect(ambientLook.cursor.dissipation).toBeLessThan(1);
   });
