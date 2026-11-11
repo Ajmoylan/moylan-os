@@ -356,3 +356,47 @@ void main() {
   gl_FragColor = vec4(mix(uAccent, uHot, scan * 0.5) * a, a);
 }
 `;
+
+/** The uniform orbit transport's declarations in the shared header (approved V3 path). */
+const ORBIT_UNIFORMS = `uniform mat3 uFrames[FRAMES];
+uniform float uOrbitFlow[FRAMES];`;
+
+/**
+ * The orbit-texture transport's declarations (Milestone 2.4b.1b): the per-frame matrices read with
+ * `texelFetch` from an RGBA32F table (core/orbits/texture.ts; row k, texels 0–2: frame k's matrix
+ * columns). `mat3(c0, c1, c2)` builds the matrix column by column, as the uniform upload does, so
+ * `orbitFrame(frame) * v` is the same product.
+ *
+ * The flow speeds stay in the approved `uOrbitFlow[]` uniform. They are 21 constants (never updated
+ * per frame), and reading them through `texelFetch` changed the floating-point code Metal-backed
+ * compilers (Chromium/ANGLE Metal, WebKit) generate for the ring pulses: a reproducible 1-LSB
+ * difference at 4–6 pixels per frame, isolated by experiment (M2.4b1b report). With the matrices
+ * alone in the table, NEX renders pixel-identically to the uniform transport.
+ */
+const ORBIT_TEXTURE = `uniform highp sampler2D uOrbitTable;
+uniform float uOrbitFlow[FRAMES];
+mat3 orbitFrame(int k) {
+  return mat3(
+    texelFetch(uOrbitTable, ivec2(0, k), 0).xyz,
+    texelFetch(uOrbitTable, ivec2(1, k), 0).xyz,
+    texelFetch(uOrbitTable, ivec2(2, k), 0).xyz);
+}`;
+
+/**
+ * Derives the orbit-texture variant of an approved NEX vertex shader: only the matrix transport
+ * changes (the declarations, and `uFrames[frame]` becomes `orbitFrame(frame)`); every other line,
+ * and the operation order, is the approved source. Throws if the source no longer has the
+ * expected shape, so a future edit can't silently skip it.
+ */
+export function withOrbitTexture(source: string): string {
+  if (!source.includes(ORBIT_UNIFORMS)) throw new Error("NEX shader without uniform orbit frames");
+  const derived = source
+    .replace(ORBIT_UNIFORMS, ORBIT_TEXTURE)
+    .replaceAll("uFrames[frame]", "orbitFrame(frame)");
+  if (/uFrames/.test(derived)) throw new Error("NEX shader with unconverted orbit access");
+  return derived;
+}
+
+/** NEX's point and line vertex shaders for the orbit-texture transport (core/orbits/). */
+export const nexPointVertexTexture = withOrbitTexture(nexPointVertex);
+export const nexLineVertexTexture = withOrbitTexture(nexLineVertex);

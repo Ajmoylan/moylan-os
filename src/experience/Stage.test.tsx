@@ -40,6 +40,7 @@ const seen = vi.hoisted(() => ({
   engines: [] as EngineRecord[],
   layers: [] as LayerRecord[],
   forget: vi.fn(),
+  forgetOrbits: vi.fn(),
   faults: {
     engine: false,
     construct: null as Kind | null,
@@ -111,6 +112,7 @@ function layerClass(kind: Kind) {
 
 vi.mock("./flow/FlowSimulation", () => ({ FlowSimulation: layerClass("flow") }));
 vi.mock("./flow/FlowField", () => ({ forgetValidatedFormat: seen.forget }));
+vi.mock("./core/orbits/probe", () => ({ forgetOrbitProbe: seen.forgetOrbits }));
 vi.mock("./ambient/AmbientField", () => ({ AmbientField: layerClass("ambient") }));
 vi.mock("./transition/TransitionClock", () => ({ TransitionClock: layerClass("clock") }));
 vi.mock("./core/AgentCore", () => ({ AgentCore: layerClass("core") }));
@@ -144,6 +146,7 @@ beforeEach(() => {
   seen.layers.length = 0;
   seen.faults = { engine: false, construct: null, setProps: null };
   seen.forget.mockClear();
+  seen.forgetOrbits.mockClear();
   setViewport(1280, 720);
 });
 
@@ -365,6 +368,32 @@ describe("Stage frame loop and lifecycle", () => {
     act(() => options().onContextRestored!());
     expect(seen.forget).toHaveBeenCalledTimes(1);
     expect(seen.forget).toHaveBeenCalledWith(seen.engines[0]!.renderer);
+  });
+
+  it("a restored context probes orbit-texture sampling again (the cache is cleared)", () => {
+    render(<Stage agent="nex" plan={full} />);
+    act(() => options().onContextLost!(new Event("webglcontextlost")));
+    expect(seen.forgetOrbits).not.toHaveBeenCalled();
+    act(() => options().onContextRestored!());
+    expect(seen.forgetOrbits).toHaveBeenCalledTimes(1);
+    expect(seen.forgetOrbits).toHaveBeenCalledWith(seen.engines[0]!.renderer);
+  });
+
+  it("passes the orbit transport preference (default uniforms; ?orbits=texture switch) to AgentCore", () => {
+    const { unmount } = render(<Stage agent="nex" plan={full} />);
+    expect(last("core").context.orbitPreference).toBe("uniforms");
+    unmount();
+    window.history.replaceState(null, "", "/?orbits=texture");
+    try {
+      render(<Stage agent="nex" plan={full} />);
+      expect(last("core").context.orbitPreference).toBe("texture");
+      // Kept across context restores (read once per stage).
+      act(() => options().onContextLost!(new Event("webglcontextlost")));
+      act(() => options().onContextRestored!());
+      expect(last("core").context.orbitPreference).toBe("texture");
+    } finally {
+      window.history.replaceState(null, "", "/");
+    }
   });
 
   it("releases each set of layers exactly once across loss, restore and unmount", () => {

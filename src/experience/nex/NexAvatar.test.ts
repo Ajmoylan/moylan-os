@@ -75,6 +75,7 @@ const nex = () =>
       hot: rgb(nexPalette.hot),
     },
     shape: (count) => generateNexShape(count),
+    orbitTransport: "uniforms",
   });
 
 beforeEach(() => {

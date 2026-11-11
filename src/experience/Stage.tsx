@@ -8,10 +8,13 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { AgentId } from "~/agents/registry";
+import type { OrbitTransport } from "./agents/types";
 import { AmbientField } from "./ambient/AmbientField";
 import { ambientLook, settingsForTier } from "./ambient/config";
 import type { StagePlan } from "./capabilities";
 import { AgentCore } from "./core/AgentCore";
+import { forgetOrbitProbe } from "./core/orbits/probe";
+import { orbitPreferenceFrom } from "./core/orbits/transport";
 import { ShapeCache } from "./core/shapeCache";
 import { Engine, type CameraOptions, type FrameLoop } from "./engine/Engine";
 import { forgetValidatedFormat } from "./flow/FlowField";
@@ -97,6 +100,7 @@ export interface StageShared {
   interaction: StageInteraction;
   transition: StageTransition;
   shapes: ShapeCache;
+  orbitPreference: OrbitTransport;
   onQualityStep: (next: Quality) => void;
 }
 
@@ -106,7 +110,7 @@ export interface StageShared {
  * partial set.
  */
 export function createLayers(engine: Engine, shared: StageShared): StageLayers {
-  const { stage, interaction, transition, shapes, onQualityStep } = shared;
+  const { stage, interaction, transition, shapes, orbitPreference, onQualityStep } = shared;
   const created: { dispose(): void }[] = [];
   try {
     const flow = new FlowSimulation(engine, { stage, interaction });
@@ -115,7 +119,13 @@ export function createLayers(engine: Engine, shared: StageShared): StageLayers {
     created.push(clock);
     const ambient = new AmbientField(engine, { stage, interaction, onQualityStep });
     created.push(ambient);
-    const core = new AgentCore(engine, { stage, interaction, transition, shapes });
+    const core = new AgentCore(engine, {
+      stage,
+      interaction,
+      transition,
+      shapes,
+      orbitPreference,
+    });
     created.push(core);
     for (const layer of [flow, clock, ambient, core]) engine.add(layer);
     return { flow, clock, ambient, core };
@@ -178,6 +188,8 @@ export default function Stage({ agent, plan, path = "/", onUnavailable }: StageP
   const [transition] = useState(() => createTransition("nex"));
   /** Generated agent shapes, kept for the stage's lifetime (a context restore reuses them). */
   const [shapes] = useState(() => new ShapeCache());
+  /** Orbit transport preference (Milestone 2.4b.1b comparison switch; read once per stage). */
+  const [orbitPreference] = useState(() => orbitPreferenceFrom(window.location.search));
   const [lifecycle, setLifecycle] = useState<LifecycleState>("starting");
   const [quality, setQuality] = useState<Quality>(FULL_QUALITY);
   const onQualityStep = useCallback((next: Quality) => setQuality((q) => lowerOf(q, next)), []);
@@ -261,7 +273,10 @@ export default function Stage({ agent, plan, path = "/", onUnavailable }: StageP
           // The restored context validates its flow-map format again before the rebuilt layers
           // use it (it may run on another GPU or driver).
           const restored = engineRef.current;
-          if (restored) forgetValidatedFormat(restored.renderer);
+          if (restored) {
+            forgetValidatedFormat(restored.renderer);
+            forgetOrbitProbe(restored.renderer);
+          }
           setGeneration((value) => value + 1);
           setLifecycle("starting");
         },
@@ -297,7 +312,14 @@ export default function Stage({ agent, plan, path = "/", onUnavailable }: StageP
     if (!engine || !stage) return;
     let layers: StageLayers;
     try {
-      layers = createLayers(engine, { stage, interaction, transition, shapes, onQualityStep });
+      layers = createLayers(engine, {
+        stage,
+        interaction,
+        transition,
+        shapes,
+        orbitPreference,
+        onQualityStep,
+      });
     } catch (error) {
       fail(error);
       return;
@@ -316,7 +338,7 @@ export default function Stage({ agent, plan, path = "/", onUnavailable }: StageP
       if (releaseLayers.current === release) releaseLayers.current = () => {};
       release();
     };
-  }, [generation, interaction, transition, shapes, onQualityStep, fail]);
+  }, [generation, interaction, transition, shapes, orbitPreference, onQualityStep, fail]);
 
   const status =
     lifecycle === "lost"

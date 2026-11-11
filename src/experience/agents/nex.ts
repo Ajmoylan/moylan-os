@@ -12,9 +12,11 @@ export const nexDefinition: AgentRenderDefinition = {
   version: 1,
   seed: NEX_SEED,
   generate: (count, seed) => generateNexShape(count, seed),
-  // `uFrames[21]` (mat3, 63 vectors) + `uOrbitFlow[21]` + the rest: 112 vectors, measured in
-  // Milestone 2.4a with getActiveUniform. Inside the WebGL2 guarantee of 256 on every device.
-  transports: { idle: ["uniforms"], uniformVectors: { uniforms: 112 } },
+  // Point program vertex-uniform vectors, measured with getActiveUniform: uniform transport 112
+  // (`uFrames[21]` mat3 = 63, `uOrbitFlow[21]` = 21; inside the WebGL2 guarantee of 256 on every
+  // device), texture transport 49 plus one sampler: the matrices move to the table, the 21 flow
+  // speeds stay uniforms (Milestone 2.4b.1b).
+  transports: { idle: ["uniforms", "texture"], uniformVectors: { uniforms: 112, texture: 49 } },
   hotOverride: NEX_HOT,
   createView: (engine, context) => new NexAvatar(engine, context),
 };
