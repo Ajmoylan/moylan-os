@@ -12,10 +12,10 @@ import {
   stepDown,
   type Quality,
 } from "./quality";
+import { resolveDpr } from "../engine/Engine";
 
-/** The renderer's DPR for a device ratio and a Canvas range, as R3F resolves it. */
-const resolved = (device: number, [min, max]: [number, number]) =>
-  Math.min(Math.max(min, device), max);
+/** The renderer's DPR for a device ratio and a range, as the stage engine resolves it. */
+const resolved = (device: number, range: [number, number]) => resolveDpr(range, device);
 
 describe("stepDown (quality ladder)", () => {
   it("lowers the DPR first, then halves the particles, then stops", () => {

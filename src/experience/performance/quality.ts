@@ -6,10 +6,10 @@
  * (ADR-007: it changes at most a handful of times per visit, never per frame), and everything
  * else is derived from it on every render:
  *
- *   renderer DPR  = min(tier DPR cap, adapted DPR cap, backing-pixel limit), via the Canvas `dpr`
+ *   renderer DPR  = min(tier DPR cap, adapted DPR cap, backing-pixel limit), via the engine's DPR range
  *   drawn count   = tier particle count × adapted particle share, via the geometry draw range
  *
- * Because the Canvas `dpr` prop *is* the adapted value, R3F re-applying it on a re-render (route,
+ * Because the engine's DPR range *is* the adapted value, re-applying it on a re-render (route,
  * visibility or motion change) or on a display/zoom change can no longer undo an adaptation, and a
  * tier change re-derives the draw range for the new geometry.
  */
@@ -70,7 +70,7 @@ export function resolveDprCap(tierCap: number, quality: Quality, pixelLimit: num
 }
 
 /**
- * R3F `dpr` range for a cap: the device ratio clamped to [1, cap], or exactly `cap` when the cap
+ * The engine's DPR range for a cap: the device ratio clamped to [1, cap], or exactly `cap` when the cap
  * is below 1 (very large canvases on low tiers).
  */
 export function dprRange(cap: number): [number, number] {

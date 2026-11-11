@@ -85,8 +85,20 @@ export interface FlowSettings {
   advection: number;
 }
 
-/** The validated format per renderer: probing needs a GPU readback, so it runs once. */
+/**
+ * The validated format per renderer: probing needs a GPU readback, so it runs once per context.
+ * A restored context counts as new (it may run on another GPU or driver after a reset): see
+ * `forgetValidatedFormat()`.
+ */
 const validatedFormat = new WeakMap<WebGLRenderer, FlowFormat>();
+
+/**
+ * Forgets the format validated for a renderer, so the next flow map probes again (once). Called
+ * when the renderer's context is restored; the half-float → RGBA8 → analytic order is unchanged.
+ */
+export function forgetValidatedFormat(renderer: WebGLRenderer): void {
+  validatedFormat.delete(renderer);
+}
 
 /** Completeness of a full-size target (the probe validated the format on tiny targets). */
 function isComplete(renderer: WebGLRenderer, target: WebGLRenderTarget): boolean {
@@ -135,8 +147,15 @@ export class FlowField {
       return false;
     });
     validatedFormat.set(renderer, format);
-    if (format === "analytic" || !targets) return null;
-    return new FlowField(renderer, format, targets, settings);
+    const pair = targets as [WebGLRenderTarget, WebGLRenderTarget] | null;
+    if (format === "analytic" || !pair) return null;
+    try {
+      return new FlowField(renderer, format, pair, settings);
+    } catch (error) {
+      // Construction failed part-way (Milestone 2.4a rollback): release the targets it was given.
+      for (const target of pair) target.dispose();
+      throw error;
+    }
   }
 
   private constructor(
@@ -183,13 +202,20 @@ export class FlowField {
     const previousTarget = renderer.getRenderTarget();
     const previousColor = renderer.getClearColor(new Color());
     const previousAlpha = renderer.getClearAlpha();
-    renderer.setClearColor(this.encoded ? new Color(0.5, 0.5, 0) : new Color(0, 0, 0), 1);
-    for (const target of this.targets) {
-      renderer.setRenderTarget(target);
-      renderer.clear(true, false, false);
+    try {
+      renderer.setClearColor(this.encoded ? new Color(0.5, 0.5, 0) : new Color(0, 0, 0), 1);
+      for (const target of this.targets) {
+        renderer.setRenderTarget(target);
+        renderer.clear(true, false, false);
+      }
+      renderer.setRenderTarget(previousTarget);
+      renderer.setClearColor(previousColor, previousAlpha);
+    } catch (error) {
+      // The caller releases the targets; this pass's own resources are released here.
+      this.geometry.dispose();
+      this.material.dispose();
+      throw error;
     }
-    renderer.setRenderTarget(previousTarget);
-    renderer.setClearColor(previousColor, previousAlpha);
   }
 
   /** The current velocity field, for sampling in other shaders. */

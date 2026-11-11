@@ -67,10 +67,11 @@ export class PointerTracker {
 
   attach(): void {
     if (this.attached) return;
+    // Marked first, so a failure part-way through is fully undone by detach().
+    this.attached = true;
     this.win.addEventListener("pointermove", this.onMove, { passive: true });
     this.win.document.documentElement.addEventListener("pointerleave", this.onLeave);
     this.win.addEventListener("blur", this.onLeave);
-    this.attached = true;
   }
 
   detach(): void {
