@@ -3,10 +3,10 @@ import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AmbientFieldContext, AmbientFieldProps } from "./ambient/AmbientField";
 import type { StagePlan } from "./capabilities";
+import type { AgentCoreContext, AgentCoreProps } from "./core/AgentCore";
 import type { EngineOptions, FrameLoop } from "./engine/Engine";
 import type { FlowSimulationProps } from "./flow/FlowSimulation";
 import type { StageInteraction } from "./flow/interaction";
-import type { NexAvatarProps } from "./nex/NexAvatar";
 import { MIN_PARTICLE_SHARE, type Quality } from "./performance/quality";
 import Stage, { MAX_CONTEXT_LOSSES, RESTORE_TIMEOUT_MS } from "./Stage";
 
@@ -18,10 +18,11 @@ import Stage, { MAX_CONTEXT_LOSSES, RESTORE_TIMEOUT_MS } from "./Stage";
  * Playwright specs).
  */
 
-type Kind = "flow" | "ambient" | "nex";
+type Kind = "flow" | "clock" | "ambient" | "core";
 interface LayerRecord {
   kind: Kind;
-  context: { interaction: StageInteraction } & Partial<AmbientFieldContext>;
+  context: { interaction: StageInteraction } & Partial<AmbientFieldContext> &
+    Partial<AgentCoreContext>;
   props: unknown[];
   disposed: number;
 }
@@ -111,7 +112,8 @@ function layerClass(kind: Kind) {
 vi.mock("./flow/FlowSimulation", () => ({ FlowSimulation: layerClass("flow") }));
 vi.mock("./flow/FlowField", () => ({ forgetValidatedFormat: seen.forget }));
 vi.mock("./ambient/AmbientField", () => ({ AmbientField: layerClass("ambient") }));
-vi.mock("./nex/NexAvatar", () => ({ NexAvatar: layerClass("nex") }));
+vi.mock("./transition/TransitionClock", () => ({ TransitionClock: layerClass("clock") }));
+vi.mock("./core/AgentCore", () => ({ AgentCore: layerClass("core") }));
 
 const full: StagePlan = { tier: 3, motion: "full", pointerEffects: true, reason: "capable" };
 const reduced: StagePlan = { tier: 1, motion: "reduced", pointerEffects: false, reason: "capable" };
@@ -125,7 +127,7 @@ const lastField = () => ({
   ...last("ambient").context,
   ...lastProps<AmbientFieldProps>("ambient"),
 });
-const lastNex = () => ({ ...last("nex").context, ...lastProps<NexAvatarProps>("nex") });
+const lastNex = () => ({ ...last("core").context, ...lastProps<AgentCoreProps>("core") });
 const lastFlow = () => lastProps<FlowSimulationProps>("flow");
 const step = (next: Quality) => act(() => last("ambient").context.onQualityStep!(next));
 const stageEl = (container: HTMLElement) => container.querySelector<HTMLElement>(".os-stage")!;
@@ -234,7 +236,7 @@ describe("Stage layers", () => {
 
   it("one pointer substrate: the flow simulation writes it, the field and NEX read it", () => {
     render(<Stage agent="nex" plan={full} path="/" />);
-    expect(last("nex").context.interaction).toBe(last("flow").context.interaction);
+    expect(last("core").context.interaction).toBe(last("flow").context.interaction);
     expect(last("ambient").context.interaction).toBe(last("flow").context.interaction);
     step({ dprCap: 1.5, particleShare: 0.5 });
     expect(lastNex().particleShare).toBe(0.5);
@@ -252,6 +254,25 @@ describe("Stage layers", () => {
     const { rerender } = render(<Stage agent="nex" plan={full} path="/" />);
     rerender(<Stage agent="forge" plan={full} path="/engineering" />);
     expect(lastNex().path).toBe("/engineering");
+  });
+
+  it("AgentCore and the transition clock share one transition frame; the clock gets the agent", () => {
+    const { rerender } = render(<Stage agent="nex" plan={full} path="/" />);
+    const clock = last("clock").context as unknown as { transition: unknown };
+    expect(last("core").context.transition).toBe(clock.transition);
+    expect(lastProps<{ agent: string }>("clock")).toEqual({ agent: "nex" });
+    rerender(<Stage agent="forge" plan={full} path="/engineering" />);
+    expect(lastProps<{ agent: string }>("clock")).toEqual({ agent: "forge" });
+  });
+
+  it("the transition frame and shape cache live as long as the Stage (kept across restores)", () => {
+    render(<Stage agent="nex" plan={full} path="/" />);
+    const { transition, shapes, interaction } = last("core").context;
+    act(() => options().onContextLost!(new Event("webglcontextlost")));
+    act(() => options().onContextRestored!());
+    expect(last("core").context.transition).toBe(transition);
+    expect(last("core").context.shapes).toBe(shapes);
+    expect(last("core").context.interaction).toBe(interaction);
   });
 
   it("invalidates once per commit that changed something, never for unchanged props", () => {
@@ -287,13 +308,18 @@ describe("Stage frame loop and lifecycle", () => {
     rerender(<Stage agent="forge" plan={reduced} path="/engineering" />);
     rerender(<Stage agent="nex" plan={full} path="/" />);
     expect(seen.engines).toHaveLength(1);
-    expect(seen.layers).toHaveLength(3);
+    expect(seen.layers).toHaveLength(4);
   });
 
   it("context loss stops frames; a restore rebuilds the layers under the same engine", () => {
     const { container } = render(<Stage agent="nex" plan={full} />);
     act(() => options().onFirstFrame!());
-    const before = { flow: last("flow"), ambient: last("ambient"), nex: last("nex") };
+    const before = {
+      flow: last("flow"),
+      clock: last("clock"),
+      ambient: last("ambient"),
+      core: last("core"),
+    };
 
     const lost = new Event("webglcontextlost", { cancelable: true });
     act(() => options().onContextLost!(lost));
@@ -307,8 +333,8 @@ describe("Stage frame loop and lifecycle", () => {
 
     act(() => options().onContextRestored!());
     for (const old of Object.values(before)) expect(old.disposed).toBeGreaterThanOrEqual(1);
-    expect(last("nex")).not.toBe(before.nex);
-    expect(engine().layers).toHaveLength(3);
+    expect(last("core")).not.toBe(before.core);
+    expect(engine().layers).toHaveLength(4);
     expect(seen.engines).toHaveLength(1);
     expect(stageEl(container).dataset.stageState).toBe("starting");
     expect(lastLoop()).toBe("always");
@@ -325,10 +351,10 @@ describe("Stage frame loop and lifecycle", () => {
     const propsCalls = before.map((l) => l.props.length);
     rerender(<Stage agent="forge" plan={full} path="/engineering" />); // a route change while lost
     expect(before.map((l) => l.props.length)).toEqual(propsCalls);
-    expect(seen.layers).toHaveLength(3);
+    expect(seen.layers).toHaveLength(4);
     expect(lastLoop()).toBe("never");
     act(() => options().onContextRestored!());
-    expect(seen.layers).toHaveLength(6);
+    expect(seen.layers).toHaveLength(8);
     expect(lastNex().path).toBe("/engineering");
   });
 
@@ -347,7 +373,7 @@ describe("Stage frame loop and lifecycle", () => {
     act(() => options().onContextLost!(new Event("webglcontextlost")));
     act(() => options().onContextRestored!()); // the restore rebuild runs the old cleanup again
     for (const layer of first) expect(layer.disposed).toBe(1);
-    const second = seen.layers.slice(3);
+    const second = seen.layers.slice(4);
     act(() => options().onContextLost!(new Event("webglcontextlost")));
     unmount();
     for (const layer of second) expect(layer.disposed).toBe(1);
@@ -400,8 +426,8 @@ describe("Stage frame loop and lifecycle", () => {
     expect(seen.engines[0]!.disposed).toBe(1);
     expect(seen.engines[1]!.disposed).toBe(0);
     const live = seen.layers.filter((l) => l.disposed === 0);
-    expect(live.map((l) => l.kind).sort()).toEqual(["ambient", "flow", "nex"]);
-    expect(engine().layers).toHaveLength(3);
+    expect(live.map((l) => l.kind).sort()).toEqual(["ambient", "clock", "core", "flow"]);
+    expect(engine().layers).toHaveLength(4);
     expect(lastField().settings.particles).toBe(12_000);
     expect(lastNex().path).toBe("/");
     expect(lastLoop()).toBe("always");
@@ -424,7 +450,7 @@ describe("Stage failure policy (fault injection)", () => {
     expect(seen.layers).toHaveLength(0);
   });
 
-  for (const kind of ["flow", "ambient", "nex"] as const) {
+  for (const kind of ["flow", "clock", "ambient", "core"] as const) {
     it(`${kind} construction fails: earlier layers and the engine are released, reported once`, () => {
       seen.faults.construct = kind;
       const onUnavailable = vi.fn();
@@ -437,7 +463,7 @@ describe("Stage failure policy (fault injection)", () => {
       seen.faults.setProps = kind;
       const onUnavailable = vi.fn();
       render(<Stage agent="nex" plan={full} onUnavailable={onUnavailable} />);
-      expect(seen.layers).toHaveLength(3);
+      expect(seen.layers).toHaveLength(4);
       expectFallback(onUnavailable);
     });
   }
@@ -445,7 +471,7 @@ describe("Stage failure policy (fault injection)", () => {
   it("a later setProps failure (route change) takes the same path", () => {
     const onUnavailable = vi.fn();
     const { rerender } = render(<Stage agent="nex" plan={full} onUnavailable={onUnavailable} />);
-    seen.faults.setProps = "nex";
+    seen.faults.setProps = "core";
     rerender(<Stage agent="forge" plan={full} path="/engineering" onUnavailable={onUnavailable} />);
     expectFallback(onUnavailable);
     rerender(<Stage agent="nex" plan={full} path="/" onUnavailable={onUnavailable} />);
@@ -456,7 +482,7 @@ describe("Stage failure policy (fault injection)", () => {
     const onUnavailable = vi.fn();
     render(<Stage agent="nex" plan={full} onUnavailable={onUnavailable} />);
     act(() => options().onContextLost!(new Event("webglcontextlost")));
-    seen.faults.construct = "nex";
+    seen.faults.construct = "core";
     act(() => options().onContextRestored!());
     expectFallback(onUnavailable);
     expect(seen.layers.filter((l) => l.disposed === 0)).toHaveLength(0);

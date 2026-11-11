@@ -17,11 +17,12 @@ import {
   type Object3D,
 } from "three";
 import type { EffectiveMotion } from "~/motion/policy";
-import { nexPalette, rgb } from "../ambient/config";
+import type { AgentView, AgentViewContext } from "../agents/types";
 import { particleFragmentShader } from "../ambient/shaders";
-import type { Engine, FrameLayer } from "../engine/Engine";
+import { createShapeSlot } from "../core/slots";
+import type { Engine } from "../engine/Engine";
 import { Resources } from "../engine/resources";
-import { interactionUniforms, syncInteraction, type StageInteraction } from "../flow/interaction";
+import { interactionUniforms, syncInteraction } from "../flow/interaction";
 import { MAX_STEP_SECONDS } from "../flow/policy";
 import { drawCount } from "../performance/quality";
 import { AnchorTracker } from "./anchor";
@@ -39,7 +40,7 @@ import {
   nexSolidFragment,
   NEX_GLOW_SHARE,
 } from "./shaders";
-import { generateNexShape, NEX_FIRST_RING } from "./shape";
+import { NEX_FIRST_RING } from "./shape";
 
 /** The page marks NEX's place with a layout-only element carrying this attribute. */
 export const NEX_ANCHOR = '[data-stage-anchor="nex"]';
@@ -61,17 +62,12 @@ export interface NexAvatarProps {
   path: string;
 }
 
-/** Fixed for the layer's lifetime. */
-export interface NexAvatarContext {
-  /** The stage element: NEX state is published on it as data attributes. */
-  stage: HTMLElement;
-  /**
-   * The stage's shared cursor-interaction substrate (ADR-004), written by the flow simulation in
-   * the engine's simulate phase, before NEX updates: NEX samples the same flow map (or analytic
-   * fallback) and attaches no listener of its own.
-   */
-  interaction: StageInteraction;
-}
+/**
+ * Fixed for the layer's lifetime, lent by AgentCore (Milestone 2.4b.1a): the stage element, the
+ * shared cursor interaction (ADR-004: written by the flow simulation in the simulate phase, before
+ * NEX updates; NEX attaches no listener of its own), the shared colour values and the shape cache.
+ */
+export type NexAvatarContext = AgentViewContext;
 
 const additive = {
   transparent: true,
@@ -127,7 +123,7 @@ type Published = "nexState" | "nexFlow" | "nexFormed";
  * Motion: full = arrival from drifting particles, living idle and cursor response; reduced = the
  * fully formed NEX as a still frame (rendered on demand), no pointer and no arrival.
  */
-export class NexAvatar implements FrameLayer {
+export class NexAvatar implements AgentView {
   readonly phase = "update";
   private readonly resources = new Resources();
   private readonly frames = new NexMotion();
@@ -188,10 +184,11 @@ export class NexAvatar implements FrameLayer {
         delete dataset.nexFlow;
         delete dataset.nexFormed;
       });
+      // The registry palette, held by the Stage-lifetime transition frame (values as before).
       const colours = {
-        uDeep: { value: rgb(nexPalette.base) },
-        uAccent: { value: rgb(nexPalette.accent) },
-        uHot: { value: rgb(nexPalette.hot) },
+        uDeep: { value: context.colours.deep },
+        uAccent: { value: context.colours.accent },
+        uHot: { value: context.colours.hot },
       };
       // Shared uniform objects: one write per frame updates every layer.
       this.common = {
@@ -291,11 +288,8 @@ export class NexAvatar implements FrameLayer {
     let changed = false;
 
     if (!prev || prev.particles !== next.particles) {
-      const shape = generateNexShape(next.particles);
-      const g = new BufferGeometry();
-      g.setAttribute("position", new BufferAttribute(shape.positions, 3));
-      g.setAttribute("aOrbit", new BufferAttribute(shape.orbits, 1));
-      g.setAttribute("aSeed", new BufferAttribute(shape.seeds, 4));
+      // Shape slot A from the Stage-lifetime cache (generated synchronously on first use).
+      const g = createShapeSlot(this.context.shape(next.particles));
       // A second geometry only for the glow layer's own draw range (shared buffers; the shape is
       // shuffled, so a prefix is an even sample).
       const glow = new BufferGeometry();
@@ -330,6 +324,11 @@ export class NexAvatar implements FrameLayer {
     if (prev?.motion !== next.motion) changed = true;
     this.props = next;
     return changed;
+  }
+
+  /** The published visibility state ("hidden" | "visible"; "" before the first frame). */
+  get state(): string {
+    return this.published.nexState;
   }
 
   private publish(key: Published, value: string): void {
