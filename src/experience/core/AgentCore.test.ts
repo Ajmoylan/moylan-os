@@ -1,5 +1,7 @@
 import {
   BufferGeometry,
+  DataTexture,
+  type Matrix3,
   PerspectiveCamera,
   Scene,
   ShaderMaterial,
@@ -12,6 +14,7 @@ import { rgb } from "../ambient/config";
 import type { Engine } from "../engine/Engine";
 import { createInteraction } from "../flow/interaction";
 import { NexAvatar, type NexAvatarProps } from "../nex/NexAvatar";
+import { nexLineVertexTexture, nexPointVertex, nexPointVertexTexture } from "../nex/shaders";
 import { generateNexShape } from "../nex/shape";
 import { createTransition } from "../transition/StageTransition";
 import { AgentCore, type AgentCoreContext } from "./AgentCore";
@@ -24,6 +27,15 @@ import { ShapeCache } from "./shapeCache";
  */
 
 const faults = vi.hoisted(() => ({ anchorAttach: false }));
+const probe = vi.hoisted(() => ({ supported: true, calls: 0, unsafe: false }));
+
+vi.mock("./orbits/probe", () => ({
+  orbitTexturesSupported: () => {
+    probe.calls++;
+    if (probe.unsafe) throw new Error("probe could not restore the renderer");
+    return probe.supported;
+  },
+}));
 const anchors = vi.hoisted(() => ({ attached: 0, detached: 0 }));
 
 vi.mock("../nex/anchor", () => ({
@@ -66,6 +78,7 @@ function fakeEngine(): Engine {
     width: 1200,
     height: 800,
     dpr: 2,
+    renderer: { isWebGLRenderer: true },
     invalidate: vi.fn(),
   } as unknown as Engine;
 }
@@ -76,6 +89,7 @@ function context(stage: HTMLElement, overrides: Partial<AgentCoreContext> = {}):
     interaction: createInteraction(0.1),
     transition: createTransition("nex"),
     shapes: new ShapeCache(),
+    orbitPreference: "uniforms",
     ...overrides,
   };
 }
@@ -119,6 +133,9 @@ let stage: HTMLElement;
 
 beforeEach(() => {
   faults.anchorAttach = false;
+  probe.supported = true;
+  probe.calls = 0;
+  probe.unsafe = false;
   anchors.attached = anchors.detached = 0;
   stage = document.createElement("div");
 });
@@ -144,6 +161,7 @@ describe("AgentCore (2.4b.1a)", () => {
       interaction: createInteraction(0.1),
       colours: LEGACY_COLOURS(),
       shape: (count) => generateNexShape(count),
+      orbitTransport: "uniforms",
     });
     const coreEngine = fakeEngine();
     const core = new AgentCore(coreEngine, context(stage));
@@ -250,5 +268,162 @@ describe("AgentCore (2.4b.1a)", () => {
     expect(core.setProps(props({ particles: 1_200 }))).toBe(false);
     core.update(engine, 0.016);
     expect(Object.keys(stage.dataset)).toEqual([]);
+  });
+});
+
+describe("AgentCore orbit transport (2.4b.1b)", () => {
+  const ORBIT_KEYS = ["uFrames", "uOrbitTable"];
+  /** The snapshot without the orbit transport (uniform names and the two vertex shaders). */
+  const withoutTransport = (root: Group) =>
+    snapshot(root).map(({ uniforms, vertexShader, ...rest }) => ({
+      ...rest,
+      uniforms: Object.fromEntries(
+        Object.entries(uniforms).filter(([name]) => !ORBIT_KEYS.includes(name)),
+      ),
+      vertexShader: vertexShader
+        .replace(
+          /uniform highp sampler2D uOrbitTable;\nuniform float uOrbitFlow\[FRAMES\];\nmat3 orbitFrame[\s\S]*?\n}/,
+          "",
+        )
+        .replace(/uniform mat3 uFrames\[FRAMES\];\nuniform float uOrbitFlow\[FRAMES\];/, "")
+        .replaceAll("orbitFrame(frame)", "uFrames[frame]"),
+    }));
+
+  it("uses the approved uniform transport by default, without probing", () => {
+    const engine = fakeEngine();
+    const core = new AgentCore(engine, context(stage));
+    expect(core.orbitTransport).toBe("uniforms");
+    expect(probe.calls).toBe(0);
+    expect(stage.dataset.stageOrbits).toBe("uniforms");
+    const points = (engine.scene.children[0] as Group).children[2] as Mesh<
+      BufferGeometry,
+      Material
+    >;
+    const material = points.material as ShaderMaterial;
+    expect(material.vertexShader).toBe(nexPointVertex);
+    expect(Object.keys(material.uniforms)).toEqual(
+      expect.arrayContaining(["uFrames", "uOrbitFlow"]),
+    );
+    expect(material.uniforms.uOrbitTable).toBeUndefined();
+    core.dispose();
+    expect(stage.dataset.stageOrbits).toBeUndefined();
+  });
+
+  it("uses the texture transport when requested and the context passes the probe", () => {
+    const engine = fakeEngine();
+    const core = new AgentCore(engine, context(stage, { orbitPreference: "texture" }));
+    expect(core.orbitTransport).toBe("texture");
+    expect(probe.calls).toBe(1);
+    expect(stage.dataset.stageOrbits).toBe("texture");
+    const [, lines, points, glowPoints] = (engine.scene.children[0] as Group).children as Mesh<
+      BufferGeometry,
+      ShaderMaterial
+    >[];
+    expect(points!.material.vertexShader).toBe(nexPointVertexTexture);
+    expect(glowPoints!.material.vertexShader).toBe(nexPointVertexTexture);
+    expect(lines!.material.vertexShader).toBe(nexLineVertexTexture);
+    // One table, shared by the three programs that read orbit frames; no uniform arrays.
+    const table = points!.material.uniforms.uOrbitTable!.value as DataTexture;
+    expect(table).toBeInstanceOf(DataTexture);
+    expect(glowPoints!.material.uniforms.uOrbitTable!.value).toBe(table);
+    expect(lines!.material.uniforms.uOrbitTable!.value).toBe(table);
+    expect(points!.material.uniforms.uFrames).toBeUndefined();
+    core.dispose();
+  });
+
+  it("falls back to the uniform transport when the probe fails", () => {
+    probe.supported = false;
+    const engine = fakeEngine();
+    const core = new AgentCore(engine, context(stage, { orbitPreference: "texture" }));
+    expect(core.orbitTransport).toBe("uniforms");
+    expect(stage.dataset.stageOrbits).toBe("uniforms");
+    const points = (engine.scene.children[0] as Group).children[2] as Mesh<
+      BufferGeometry,
+      ShaderMaterial
+    >;
+    expect(points.material.vertexShader).toBe(nexPointVertex);
+    core.dispose();
+  });
+
+  it("feeds the texture the same frames, and everything else matches the uniform path, frame by frame", () => {
+    const uniformEngine = fakeEngine();
+    const uniformCore = new AgentCore(uniformEngine, context(stage));
+    const textureEngine = fakeEngine();
+    const textureCore = new AgentCore(
+      textureEngine,
+      context(document.createElement("div"), { orbitPreference: "texture" }),
+    );
+    const sequence: [Partial<NexAvatarProps>, number[]][] = [
+      [{}, [0.016, 0.016, 0.25, 0.016]],
+      [{ particleShare: 0.5, glowLayer: false }, [0.016, 0.033]],
+      [{ particles: 1_200, motion: "reduced" }, [0, 0.016]],
+      [{ particles: 1_200, motion: "full", path: "/ai" }, [0.016, 2.5, 0.016]],
+    ];
+    for (const [overrides, deltas] of sequence) {
+      expect(textureCore.setProps(props(overrides))).toBe(uniformCore.setProps(props(overrides)));
+      for (const delta of deltas) {
+        uniformCore.update(uniformEngine, delta);
+        textureCore.update(textureEngine, delta);
+        const u = uniformEngine.scene.children[0] as Group;
+        const t = textureEngine.scene.children[0] as Group;
+        expect(withoutTransport(t)).toEqual(withoutTransport(u));
+        expect(t.matrix.elements).toEqual(u.matrix.elements);
+        // The table holds exactly the float32 values of the uniform matrices; the flow speeds are
+        // the same uniform array in both transports.
+        const material = (u.children[2] as Mesh<BufferGeometry, ShaderMaterial>).material;
+        const textured = (t.children[2] as Mesh<BufferGeometry, ShaderMaterial>).material;
+        const frames = material.uniforms.uFrames!.value as Matrix3[];
+        expect(textured.uniforms.uOrbitFlow!.value).toEqual(material.uniforms.uOrbitFlow!.value);
+        const table = (textured.uniforms.uOrbitTable!.value as DataTexture).image
+          .data as Float32Array;
+        frames.forEach((frame, k) => {
+          for (let c = 0; c < 3; c++) {
+            for (let i = 0; i < 3; i++) {
+              expect(
+                Object.is(table[k * 12 + c * 4 + i], Math.fround(frame.elements[c * 3 + i]!)),
+              ).toBe(true);
+            }
+          }
+        });
+      }
+    }
+    uniformCore.dispose();
+    textureCore.dispose();
+  });
+
+  it("an unsafe probe cleanup failure is not a fallback: construction fails, leaving nothing", () => {
+    probe.unsafe = true;
+    const engine = fakeEngine();
+    const materials = vi.spyOn(ShaderMaterial.prototype, "dispose");
+    expect(() => new AgentCore(engine, context(stage, { orbitPreference: "texture" }))).toThrow(
+      "probe could not restore the renderer",
+    );
+    // The view was never built; the Stage's fail() path takes over (static fallback).
+    expect(materials).not.toHaveBeenCalled();
+    expect(engine.scene.children).toHaveLength(0);
+    expect(Object.keys(stage.dataset)).toEqual([]);
+    expect(anchors.attached).toBe(0);
+  });
+
+  it("owns the table: released with the layer, and on a failed construction", () => {
+    const textures = vi.spyOn(DataTexture.prototype, "dispose");
+    const core = new AgentCore(fakeEngine(), context(stage, { orbitPreference: "texture" }));
+    core.dispose();
+    core.dispose();
+    expect(textures).toHaveBeenCalledTimes(1);
+    faults.anchorAttach = true;
+    expect(
+      () => new AgentCore(fakeEngine(), context(stage, { orbitPreference: "texture" })),
+    ).toThrow("anchor");
+    expect(textures).toHaveBeenCalledTimes(2);
+    expect(Object.keys(stage.dataset)).toEqual([]);
+  });
+
+  it("asks for the capability once per construction, only when the texture is wanted", () => {
+    new AgentCore(fakeEngine(), context(stage, { orbitPreference: "texture" })).dispose();
+    new AgentCore(fakeEngine(), context(stage, { orbitPreference: "texture" })).dispose();
+    new AgentCore(fakeEngine(), context(stage)).dispose(); // uniforms wanted: never asked
+    // The per-renderer cache (one probe per context) is tested in orbits/probe.test.ts.
+    expect(probe.calls).toBe(2);
   });
 });

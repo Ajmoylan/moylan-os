@@ -19,6 +19,7 @@ import {
 import type { EffectiveMotion } from "~/motion/policy";
 import type { AgentView, AgentViewContext } from "../agents/types";
 import { particleFragmentShader } from "../ambient/shaders";
+import { OrbitTexture } from "../core/orbits/texture";
 import { createShapeSlot } from "../core/slots";
 import type { Engine } from "../engine/Engine";
 import { Resources } from "../engine/resources";
@@ -34,13 +35,15 @@ import {
   nexBillboardVertex,
   nexGlowFragment,
   nexLineVertex,
+  nexLineVertexTexture,
   nexPointVertex,
+  nexPointVertexTexture,
   nexShellFragment,
   nexShellVertex,
   nexSolidFragment,
   NEX_GLOW_SHARE,
 } from "./shaders";
-import { NEX_FIRST_RING } from "./shape";
+import { NEX_FIRST_RING, NEX_FRAMES } from "./shape";
 
 /** The page marks NEX's place with a layout-only element carrying this attribute. */
 export const NEX_ANCHOR = '[data-stage-anchor="nex"]';
@@ -142,6 +145,8 @@ export class NexAvatar implements AgentView {
   private readonly points: Points;
   /** The glow layer draws a prefix of the same particles from the same GPU buffers. */
   private readonly glowPoints: Points;
+  /** The orbit-texture transport's table (null with the approved uniform transport). */
+  private readonly orbitTexture: OrbitTexture | null;
   private readonly anchor: AnchorTracker;
   private props: NexAvatarProps | null = null;
   private disposed = false;
@@ -190,10 +195,22 @@ export class NexAvatar implements AgentView {
         uAccent: { value: context.colours.accent },
         uHot: { value: context.colours.hot },
       };
+      // Orbit frames: the approved uniform arrays, or (Milestone 2.4b.1b) the same matrices in an
+      // RGBA32F table, owned and released with the layer (flow speeds stay a uniform array).
+      const texture = context.orbitTransport === "texture";
+      this.orbitTexture = texture ? own.own(new OrbitTexture(NEX_FRAMES)) : null;
+      this.orbitTexture?.write(this.frames.frames);
+      const orbits: Record<string, IUniform> = this.orbitTexture
+        ? {
+            uOrbitTable: { value: this.orbitTexture.texture },
+            uOrbitFlow: { value: this.frames.flow },
+          }
+        : { uFrames: { value: this.frames.frames }, uOrbitFlow: { value: this.frames.flow } };
+      const pointVertex = texture ? nexPointVertexTexture : nexPointVertex;
+      const lineVertex = texture ? nexLineVertexTexture : nexLineVertex;
       // Shared uniform objects: one write per frame updates every layer.
       this.common = {
-        uFrames: { value: this.frames.frames },
-        uOrbitFlow: { value: this.frames.flow },
+        ...orbits,
         uTime: { value: 0 },
         uArrive: { value: 0 },
         uFade: { value: 0 },
@@ -217,15 +234,15 @@ export class NexAvatar implements AgentView {
       this.materials = {
         points: material(
           { ...this.pointsUniforms, uGlowLayer: { value: 0 }, uGlowFade: { value: 0 } },
-          nexPointVertex,
+          pointVertex,
           particleFragmentShader,
         ),
         glowPoints: material(
           { ...this.pointsUniforms, uGlowLayer: { value: 1 }, uGlowFade: { value: 0 } },
-          nexPointVertex,
+          pointVertex,
           particleFragmentShader,
         ),
-        lines: material(this.common, nexLineVertex, nexSolidFragment),
+        lines: material(this.common, lineVertex, nexSolidFragment),
         glow: material(
           { ...this.common, ...intensity(), uRadius: { value: NEX_PARAMS.coreRadius * 6 } },
           nexBillboardVertex,
@@ -391,6 +408,7 @@ export class NexAvatar implements AgentView {
     }
     this.publish("nexFormed", this.arrival >= ARRIVAL_SECONDS ? "true" : "false");
     this.frames.update(this.time);
+    this.orbitTexture?.write(this.frames.frames);
 
     // Place, scale and turn NEX so its three-quarter view faces the camera from its anchor.
     root.position.set(x, y, 0);

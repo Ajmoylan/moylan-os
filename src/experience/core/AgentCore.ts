@@ -1,9 +1,16 @@
 import { definitionFor } from "../agents/definitions";
-import type { AgentRenderDefinition, AgentView, AgentViewProps } from "../agents/types";
+import type {
+  AgentRenderDefinition,
+  AgentView,
+  AgentViewProps,
+  OrbitTransport,
+} from "../agents/types";
 import type { Engine, FrameLayer } from "../engine/Engine";
 import { Resources } from "../engine/resources";
 import type { StageInteraction } from "../flow/interaction";
 import type { StageTransition } from "../transition/StageTransition";
+import { orbitTexturesSupported } from "./orbits/probe";
+import { selectOrbitTransport } from "./orbits/transport";
 import type { ShapeCache } from "./shapeCache";
 
 export type AgentCoreProps = AgentViewProps;
@@ -17,6 +24,8 @@ export interface AgentCoreContext {
   transition: StageTransition;
   /** Stage-lifetime CPU shapes (survive context loss). */
   shapes: ShapeCache;
+  /** The preferred orbit transport (default `uniforms`; `texture` behind the 1b switch). */
+  orbitPreference: OrbitTransport;
 }
 
 /**
@@ -32,6 +41,8 @@ export interface AgentCoreContext {
 export class AgentCore implements FrameLayer {
   readonly phase = "update";
   readonly definition: AgentRenderDefinition;
+  /** The orbit transport in use: the preference if supported and probed, else uniforms. */
+  readonly orbitTransport: OrbitTransport;
   private readonly resources = new Resources();
   private readonly view: AgentView;
   private readonly stage: HTMLElement;
@@ -45,17 +56,27 @@ export class AgentCore implements FrameLayer {
     try {
       own.defer(() => {
         delete context.stage.dataset.agentState;
+        delete context.stage.dataset.stageOrbits;
       });
       const { source, palette } = context.transition;
       const definition = definitionFor(source);
       if (!definition) throw new Error(`No WebGL definition for agent "${source}"`);
       this.definition = definition;
+      // The capability probe runs only if the texture transport is wanted and supported, once
+      // per context (cached per renderer; the Stage forgets it when the context is restored).
+      this.orbitTransport = selectOrbitTransport(
+        context.orbitPreference,
+        definition.transports,
+        () => orbitTexturesSupported(engine.renderer),
+      );
+      context.stage.dataset.stageOrbits = this.orbitTransport;
       this.view = own.own(
         definition.createView(engine, {
           stage: context.stage,
           interaction: context.interaction,
           colours: palette,
           shape: (count) => context.shapes.get(definition, count),
+          orbitTransport: this.orbitTransport,
         }),
       );
     } catch (error) {

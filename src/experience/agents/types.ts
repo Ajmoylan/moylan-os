@@ -18,7 +18,10 @@ export interface AgentShape {
   seeds: Float32Array;
 }
 
-/** How an agent's orbit frames reach its shaders. Only `uniforms` exists before 2.4b.1b. */
+/**
+ * How an agent's orbit frames reach its shaders: the approved uniform arrays, or (Milestone
+ * 2.4b.1b) an RGBA32F table read with `texelFetch` (core/orbits/).
+ */
 export type OrbitTransport = "uniforms" | "texture";
 
 export interface AgentTransports {
@@ -58,6 +61,8 @@ export interface AgentViewContext {
   colours: AgentColours;
   /** The agent's shape for N particles, from the Stage-lifetime shape cache (synchronous). */
   shape(count: number): AgentShape;
+  /** The orbit transport AgentCore selected for this context (fixed for the view's lifetime). */
+  orbitTransport: OrbitTransport;
 }
 
 /**
