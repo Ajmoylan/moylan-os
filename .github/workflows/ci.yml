@@ -51,8 +51,12 @@ jobs:
       - name: Build (includes CSP hashing and output checks)
         run: npm run build
 
+      # Browser binary only. GitHub's Ubuntu runner images preinstall Google Chrome and Chromium,
+      # so Chromium's system libraries are already present; `--with-deps` additionally ran apt-get,
+      # which failed when the Ubuntu mirror could not be resolved (PR #14). Playwright checks host
+      # dependencies at launch and fails the e2e step with the exact missing libraries if any are.
       - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
 
       - name: End-to-end, accessibility and security-header tests
         run: npm run test:e2e
