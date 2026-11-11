@@ -115,6 +115,97 @@ describe("AnchorTracker", () => {
     expect(observers[0]!.disconnected).toBe(true);
   });
 
+  describe("web font loading (document.fonts 'loadingdone')", () => {
+    /** A FontFaceSet stand-in that counts its live 'loadingdone' listeners. */
+    function stubFonts() {
+      const fonts = new EventTarget();
+      const live = new Set<EventListenerOrEventListenerObject>();
+      const add = fonts.addEventListener.bind(fonts);
+      const remove = fonts.removeEventListener.bind(fonts);
+      fonts.addEventListener = (type: string, listener, options) => {
+        if (type === "loadingdone" && listener) live.add(listener);
+        add(type, listener, options);
+      };
+      fonts.removeEventListener = (type: string, listener, options) => {
+        if (type === "loadingdone" && listener) live.delete(listener);
+        remove(type, listener, options);
+      };
+      Object.defineProperty(document, "fonts", { configurable: true, value: fonts });
+      return { fonts, live, loaded: () => fonts.dispatchEvent(new Event("loadingdone")) };
+    }
+
+    afterEach(() => {
+      Reflect.deleteProperty(document, "fonts");
+    });
+
+    it("re-measures the anchor once fonts finish loading", () => {
+      const { live, loaded } = stubFonts();
+      const changes = vi.fn();
+      const tracker = new AnchorTracker(window, changes);
+      tracker.attach();
+      const element = anchorElement();
+      tracker.setElement(element);
+      tracker.read();
+      expect(live.size).toBe(1);
+
+      // A web font reflows the heading the anchor sits under.
+      rect = { ...rect, top: rect.top + 24, height: rect.height + 8 };
+      changes.mockClear();
+      loaded();
+      expect(changes).toHaveBeenCalledTimes(1); // the demand loop is asked for a frame
+      tracker.read();
+      tracker.read();
+      expect(element.getBoundingClientRect).toHaveBeenCalledTimes(2);
+      expect(tracker.box).toMatchObject({ ...rect, present: true });
+      tracker.detach();
+    });
+
+    it("removes the listener on detach: later font loads do nothing", () => {
+      const { live, loaded } = stubFonts();
+      const changes = vi.fn();
+      const tracker = new AnchorTracker(window, changes);
+      tracker.attach();
+      const element = anchorElement();
+      tracker.setElement(element);
+      tracker.read();
+      tracker.detach();
+      expect(live.size).toBe(0);
+
+      changes.mockClear();
+      rect = { ...rect, top: 0 };
+      loaded();
+      expect(changes).not.toHaveBeenCalled();
+      tracker.read();
+      expect(element.getBoundingClientRect).toHaveBeenCalledTimes(1);
+    });
+
+    it("repeated attach/detach cycles never accumulate listeners", () => {
+      const { live, loaded } = stubFonts();
+      const changes = vi.fn();
+      const tracker = new AnchorTracker(window, changes);
+      for (let cycle = 0; cycle < 5; cycle++) {
+        tracker.attach();
+        tracker.attach(); // idempotent
+        expect(live.size).toBe(1);
+        changes.mockClear();
+        loaded();
+        expect(changes).toHaveBeenCalledTimes(1);
+        tracker.detach();
+        tracker.detach(); // idempotent
+        expect(live.size).toBe(0);
+      }
+      // Two trackers (StrictMode remount) each own exactly one listener and release only their own.
+      const other = new AnchorTracker(window, () => {});
+      tracker.attach();
+      other.attach();
+      expect(live.size).toBe(2);
+      other.detach();
+      expect(live.size).toBe(1);
+      tracker.detach();
+      expect(live.size).toBe(0);
+    });
+  });
+
   it("bumps its version only when the box actually changes", () => {
     const tracker = new AnchorTracker(window, () => {});
     tracker.attach();

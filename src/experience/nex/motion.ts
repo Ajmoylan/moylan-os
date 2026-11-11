@@ -3,6 +3,15 @@ import { NEX_PARAMS, type Quat } from "./params";
 import { NEX_FRAMES } from "./shape";
 
 /**
+ * Raised-cosine cycle 0 … 1 … 0 over `period` seconds, at `time` seconds. A module-level pure
+ * function (Milestone 2.4b.0) so `NexMotion.update()` creates no closure per frame; the expression
+ * and its evaluation order are exactly those of the original per-frame helper.
+ */
+export function cycle(time: number, period: number): number {
+  return 0.5 - 0.5 * Math.cos((2 * Math.PI * time) / period);
+}
+
+/**
  * NEX orbit frames (ADR-007: mutable objects, no React state): one rotation per orbit (halo,
  * core, nine rings, ten filaments), each spinning about its own normal at its reference rate,
  * plus the whole-avatar sway and the core's breathing. `update()` allocates nothing; the frames
@@ -43,10 +52,9 @@ export class NexMotion {
 
   update(time: number): void {
     const { breath, sway } = NEX_PARAMS;
-    const cycle = (period: number) => 0.5 - 0.5 * Math.cos((2 * Math.PI * time) / period);
-    this.breathPhase = cycle(breath.period);
+    this.breathPhase = cycle(time, breath.period);
     this.breath = 1 + breath.amplitude * this.breathPhase;
-    this.sway.makeRotationY(sway.amplitude * cycle(sway.period));
+    this.sway.makeRotationY(sway.amplitude * cycle(time, sway.period));
     for (let i = 0; i < NEX_FRAMES; i++) {
       this.m.multiplyMatrices(this.sway, this.bases[i]!);
       this.m.multiply(this.spin.makeRotationY(this.spins[i]! * time));
