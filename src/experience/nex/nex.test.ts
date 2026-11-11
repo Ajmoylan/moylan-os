@@ -1,6 +1,6 @@
-import type { Matrix3 } from "three";
+import type { Matrix3, Matrix4 } from "three";
 import { describe, expect, it } from "vitest";
-import { NexMotion } from "./motion";
+import { cycle, NexMotion } from "./motion";
 import { NEX_PARAMS, NEX_SHELL_RADIUS } from "./params";
 import { CAMERA_DISTANCE, FILL, placeNex } from "./placement";
 import {
@@ -189,6 +189,58 @@ describe("NexMotion", () => {
       isRotation(frame);
       expect(frame.elements).toEqual(b.frames[i]!.elements);
     });
+  });
+
+  it("is bit-identical to the pre-2.4b.0 implementation (per-frame closure hoisted)", () => {
+    // Verbatim copy of NexMotion.update() before Milestone 2.4b.0, which created the `cycle`
+    // closure every frame. The hoisted version must reproduce every float exactly.
+    const legacyUpdate = (
+      motion: NexMotion,
+      internals: { sway: Matrix4; spin: Matrix4; m: Matrix4; bases: Matrix4[]; spins: number[] },
+      time: number,
+    ) => {
+      const { breath, sway } = NEX_PARAMS;
+      const cycle = (period: number) => 0.5 - 0.5 * Math.cos((2 * Math.PI * time) / period);
+      motion.breathPhase = cycle(breath.period);
+      motion.breath = 1 + breath.amplitude * motion.breathPhase;
+      internals.sway.makeRotationY(sway.amplitude * cycle(sway.period));
+      for (let i = 0; i < NEX_FRAMES; i++) {
+        internals.m.multiplyMatrices(internals.sway, internals.bases[i]!);
+        internals.m.multiply(internals.spin.makeRotationY(internals.spins[i]! * time));
+        motion.frames[i]!.setFromMatrix4(internals.m);
+      }
+    };
+    const current = new NexMotion();
+    const legacy = new NexMotion();
+    const internals = legacy as unknown as Parameters<typeof legacyUpdate>[1];
+    // The deterministic parity clock's 16 ms steps, plus long-session and awkward times.
+    const times = [
+      ...Array.from({ length: 1_000 }, (_, frame) => frame * 0.016),
+      1e-7,
+      NEX_PARAMS.breath.period,
+      NEX_PARAMS.sway.period / 2,
+      1234.5678,
+      86_400.016,
+    ];
+    for (const time of times) {
+      current.update(time);
+      legacyUpdate(legacy, internals, time);
+      expect(Object.is(current.breath, legacy.breath)).toBe(true);
+      expect(Object.is(current.breathPhase, legacy.breathPhase)).toBe(true);
+      for (let i = 0; i < NEX_FRAMES; i++) {
+        const a = current.frames[i]!.elements;
+        const b = legacy.frames[i]!.elements;
+        for (let k = 0; k < 9; k++) expect(Object.is(a[k], b[k])).toBe(true);
+      }
+    }
+    expect(cycle(0, 7)).toBe(0);
+    expect(cycle(3.5, 7)).toBeCloseTo(1, 12);
+  });
+
+  it("update() creates no closure per frame (structural guard against regressions)", () => {
+    // A cheap guard, not an allocation profile: update() must not define a function again.
+    const source = NexMotion.prototype.update.toString();
+    expect(source).not.toMatch(/=>|\bfunction\b/);
   });
 
   it("spins the rings over time and breathes within the reference amplitude", () => {
