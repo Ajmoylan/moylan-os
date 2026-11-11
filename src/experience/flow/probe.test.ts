@@ -6,7 +6,7 @@ import {
   type WebGLRenderTarget as Target,
 } from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FlowField } from "./FlowField";
+import { FlowField, forgetValidatedFormat } from "./FlowField";
 import { expectedProbeReadback, probeReadbackMatches, validateFlowFormat } from "./probe";
 
 /**
@@ -151,5 +151,33 @@ describe("FlowField.create fallback with validation", () => {
     expect(again?.format).toBe("rgba8");
     expect(gl.readPixels.mock.calls.length).toBe(readbacks);
     again?.dispose();
+  });
+
+  it("probes again after a context restore, keeping the half-float → RGBA8 → analytic order", () => {
+    const behaviour: { "half-float": Behaviour; rgba8: Behaviour } = {
+      "half-float": "wrong-value",
+      rgba8: "ok",
+    };
+    const { renderer, gl } = fakeRenderer(behaviour);
+    FlowField.create(renderer, 64, settings)?.dispose();
+    expect(gl.readPixels).toHaveBeenCalledTimes(2);
+
+    // The restored context (say, another GPU) now renders half-float correctly.
+    behaviour["half-float"] = "ok";
+    forgetValidatedFormat(renderer);
+    const restored = FlowField.create(renderer, 64, settings);
+    expect(restored?.format).toBe("half-float");
+    expect(gl.readPixels).toHaveBeenCalledTimes(3);
+    restored?.dispose();
+
+    // …and if nothing validates on the next restored context, the analytic fallback remains.
+    behaviour["half-float"] = "gl-error";
+    behaviour.rgba8 = "wrong-value";
+    forgetValidatedFormat(renderer);
+    expect(FlowField.create(renderer, 64, settings)).toBeNull();
+    // Without a restore, the cached result is reused (no further readbacks).
+    const readbacks = gl.readPixels.mock.calls.length;
+    expect(FlowField.create(renderer, 64, settings)).toBeNull();
+    expect(gl.readPixels.mock.calls.length).toBe(readbacks);
   });
 });

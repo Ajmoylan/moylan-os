@@ -1,10 +1,20 @@
-import { Canvas, type RootState } from "@react-three/fiber";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { AgentId } from "~/agents/registry";
 import { AmbientField } from "./ambient/AmbientField";
 import { ambientLook, settingsForTier } from "./ambient/config";
 import type { StagePlan } from "./capabilities";
-import { createInteraction } from "./flow/interaction";
+import { Engine, type CameraOptions, type FrameLoop } from "./engine/Engine";
+import { forgetValidatedFormat } from "./flow/FlowField";
+import { FlowSimulation } from "./flow/FlowSimulation";
+import { createInteraction, type StageInteraction } from "./flow/interaction";
 import { NexAvatar } from "./nex/NexAvatar";
 import { NEX_PARAMS } from "./nex/params";
 import { CAMERA_DISTANCE } from "./nex/placement";
@@ -24,8 +34,9 @@ export interface StageProps {
   /** Current route path: stage layers that follow page anchors (NEX) re-read them on change. */
   path?: string;
   /**
-   * The WebGL stage can't continue this visit (context lost for too long or too often). The
-   * composition root then records tier 0 for the session and the static design remains.
+   * The WebGL stage can't continue this visit: no renderer context, a fatal frame or setup error,
+   * or the context was lost for too long or too often. The composition root then records tier 0
+   * for the session and the static design remains.
    */
   onUnavailable?: () => void;
 }
@@ -35,11 +46,11 @@ export const RESTORE_TIMEOUT_MS = 3000;
 export const MAX_CONTEXT_LOSSES = 2;
 
 /** One perspective camera for the 3D agents (the ambient field draws in screen space). */
-const CAMERA = {
+const CAMERA: CameraOptions = {
   fov: NEX_PARAMS.fov,
   near: 0.1,
   far: 40,
-  position: [0, 0, CAMERA_DISTANCE] as [number, number, number],
+  position: [0, 0, CAMERA_DISTANCE],
 };
 
 const GL_OPTIONS = {
@@ -66,29 +77,87 @@ function subscribeResize(onChange: () => void) {
 
 type LifecycleState = "starting" | "running" | "lost";
 
+/** The stage's layers. The engine runs them in phase order whatever order they are added in. */
+export interface StageLayers {
+  flow: FlowSimulation;
+  ambient: AmbientField;
+  nex: NexAvatar;
+}
+
 /**
- * The persistent WebGL stage (ADR-002): one R3F canvas behind the semantic DOM.
+ * Creates the layers, then adds them to the engine. Transactional: if a constructor throws, the
+ * layers already created are disposed before the error propagates, and the engine never sees a
+ * partial set.
+ */
+export function createLayers(
+  engine: Engine,
+  stage: HTMLElement,
+  interaction: StageInteraction,
+  onQualityStep: (next: Quality) => void,
+): StageLayers {
+  const created: { dispose(): void }[] = [];
+  try {
+    const flow = new FlowSimulation(engine, { stage, interaction });
+    created.push(flow);
+    const ambient = new AmbientField(engine, { stage, interaction, onQualityStep });
+    created.push(ambient);
+    const nex = new NexAvatar(engine, { stage, interaction });
+    created.push(nex);
+    for (const layer of [flow, ambient, nex]) engine.add(layer);
+    return { flow, ambient, nex };
+  } catch (error) {
+    for (const layer of created.reverse()) {
+      try {
+        layer.dispose();
+      } catch {
+        // The construction error is the one to report.
+      }
+    }
+    throw error;
+  }
+}
+
+function disposeLayers(engine: Engine, layers: StageLayers): void {
+  for (const layer of [layers.nex, layers.ambient, layers.flow]) {
+    engine.remove(layer);
+    layer.dispose();
+  }
+}
+
+/**
+ * The persistent WebGL stage (ADR-002 as amended in Milestone 2.4a): one canvas, owned by a small
+ * framework-free Three.js engine (engine/Engine.ts), behind the semantic DOM.
  *
- * Lazy-loaded through src/composition/StageMount.tsx only, so Three.js and React Three Fiber live
- * in this chunk and never in the initial application bundle. Decorative only: `aria-hidden`,
- * `pointer-events: none`; pointer input is read from `window` when allowed.
+ * This component is a thin React wrapper. It owns the policy (lifecycle state, adaptive quality,
+ * motion, context-loss limits, the failure fallback) and forwards discrete props to the engine's
+ * layers in effects; nothing here runs per frame (ADR-007).
+ *
+ * Lazy-loaded through src/composition/StageMount.tsx only, so Three.js lives in this chunk and
+ * never in the initial application bundle. Decorative only: `aria-hidden`, `pointer-events: none`;
+ * pointer input is read from `window` when allowed.
  *
  * Lifecycle (`data-stage-state`): starting → running (full motion) | static (reduced motion:
  * one still frame) | paused (tab hidden: no frames) | lost (WebGL context lost: canvas faded
  * out, no frames). The canvas fades in after its first frame, so the static design is never
  * replaced by an empty or half-initialised canvas.
  *
+ * Failure policy: the renderer or engine failing to initialise, a layer failing to construct or
+ * to apply its props (also when rebuilding after a context restore), or a frame throwing, all go
+ * through `fail()`: the engine and its layers are disposed at once (no further frames; every GPU
+ * resource, listener and the canvas released), and `onUnavailable` is called exactly once, so the
+ * composition root keeps the static design for the rest of the visit.
+ *
  * Adaptive quality (performance/quality.ts): the frame monitor's reductions are held here as
- * low-frequency state and the Canvas `dpr` is derived from them, so re-renders, tier changes and
- * context restores keep the adapted quality. It resets only when the stage unmounts (motion Off,
- * Save-Data), and is then re-learned from the tier defaults.
+ * low-frequency state and the engine's DPR range is derived from them, so re-renders, tier changes
+ * and context restores keep the adapted quality. It resets only when the stage unmounts (motion
+ * Off, Save-Data), and is then re-learned from the tier defaults.
  */
 export default function Stage({ agent, plan, path = "/", onUnavailable }: StageProps) {
   const settings = settingsForTier(plan.tier);
   const rootRef = useRef<HTMLDivElement>(null);
   /**
-   * The one cursor-interaction substrate (ADR-004): written by the ambient field (the only pointer
-   * listener and flow simulation), sampled by every layer. A stable mutable object (ADR-007).
+   * The one cursor-interaction substrate (ADR-004): written by the flow simulation (the only
+   * pointer listener and flow map), read by every layer. A stable mutable object (ADR-007).
    */
   const [interaction] = useState(() => createInteraction(ambientLook.cursor.radius));
   const [lifecycle, setLifecycle] = useState<LifecycleState>("starting");
@@ -103,7 +172,7 @@ export default function Stage({ agent, plan, path = "/", onUnavailable }: StageP
   );
   const dprCap = resolveDprCap(settings.dprCap, quality, pixelLimit);
   const dpr = useMemo(() => dprRange(dprCap), [dprCap]);
-  // Remounts the scene after a context restore so every GPU resource is rebuilt.
+  // Rebuilds the layers after a context restore so every GPU resource is recreated.
   const [generation, setGeneration] = useState(0);
   const hidden = useSyncExternalStore(
     subscribeVisibility,
@@ -116,43 +185,120 @@ export default function Stage({ agent, plan, path = "/", onUnavailable }: StageP
     unavailable.current = onUnavailable;
   }, [onUnavailable]);
 
-  // Context loss and restoration. Three.js itself calls preventDefault() on loss so the browser
-  // may restore the context; here the canvas fades out at once (no frozen frame), and if it is
-  // not restored within RESTORE_TIMEOUT_MS, or is lost more than MAX_CONTEXT_LOSSES times, the
-  // stage gives up for this visit.
-  const detachContextListeners = useRef<() => void>(() => {});
-  const onCreated = useCallback(({ gl }: RootState) => {
-    gl.setClearColor(0x000000, 0);
-    const canvas = gl.domElement;
+  const engineRef = useRef<Engine | null>(null);
+  const layersRef = useRef<StageLayers | null>(null);
+  /** Releases the current engine (and with it the layers and the canvas); idempotent. */
+  const teardown = useRef<() => void>(() => {});
+  /** Releases the current layers (not the engine); idempotent. */
+  const releaseLayers = useRef<() => void>(() => {});
+  const failed = useRef(false);
+
+  /** The single failure path: stop and release everything, then report once. */
+  const fail = useCallback((error: unknown) => {
+    if (failed.current) return;
+    failed.current = true;
+    try {
+      teardown.current();
+    } finally {
+      if (import.meta.env.DEV) console.warn("[MOYLAN//OS] WebGL stage disabled:", error);
+      unavailable.current?.();
+    }
+  }, []);
+
+  // The engine lives as long as this component. Context loss and restoration: Three.js itself
+  // calls preventDefault() on loss so the browser may restore the context; here the canvas fades
+  // out at once (no frozen frame), and if it is not restored within RESTORE_TIMEOUT_MS, or is lost
+  // more than MAX_CONTEXT_LOSSES times, the stage gives up for this visit. The layers' GPU objects
+  // are released at the moment of loss: WebGL calls are silent no-ops on a lost context, whereas
+  // deleting them after a restore would target the new context (INVALID_OPERATION, reported as
+  // console errors by WebKit). New layers are built on restore. Each engine creates its own canvas,
+  // so a released context is never reused (React StrictMode replays this effect in development).
+  useLayoutEffect(() => {
+    const root = rootRef.current!;
+    failed.current = false;
     let losses = 0;
     let timer = 0;
-    const onLost = (event: Event) => {
-      event.preventDefault();
-      losses += 1;
-      setLifecycle("lost");
+    let engine: Engine;
+    try {
+      engine = new Engine({
+        container: root,
+        gl: GL_OPTIONS,
+        camera: CAMERA,
+        onFirstFrame: () => setLifecycle("running"),
+        onFatal: (error) => fail(error),
+        onContextLost: (event) => {
+          event.preventDefault();
+          releaseLayers.current();
+          losses += 1;
+          setLifecycle("lost");
+          window.clearTimeout(timer);
+          if (losses > MAX_CONTEXT_LOSSES) {
+            unavailable.current?.();
+            return;
+          }
+          timer = window.setTimeout(() => unavailable.current?.(), RESTORE_TIMEOUT_MS);
+        },
+        onContextRestored: () => {
+          window.clearTimeout(timer);
+          // The restored context validates its flow-map format again before the rebuilt layers
+          // use it (it may run on another GPU or driver).
+          const restored = engineRef.current;
+          if (restored) forgetValidatedFormat(restored.renderer);
+          setGeneration((value) => value + 1);
+          setLifecycle("starting");
+        },
+      });
+    } catch (error) {
+      // No WebGL context for the renderer (after a successful capability probe), or a setup step
+      // failed: the engine has already released what it acquired, canvas included.
+      fail(error);
+      return;
+    }
+    engineRef.current = engine;
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
       window.clearTimeout(timer);
-      if (losses > MAX_CONTEXT_LOSSES) {
-        unavailable.current?.();
-        return;
-      }
-      timer = window.setTimeout(() => unavailable.current?.(), RESTORE_TIMEOUT_MS);
+      layersRef.current = null;
+      engineRef.current = null;
+      engine.dispose();
     };
-    const onRestored = () => {
-      window.clearTimeout(timer);
-      setGeneration((value) => value + 1);
-      setLifecycle("starting");
+    teardown.current = release;
+    return () => {
+      teardown.current = () => {};
+      release();
     };
-    canvas.addEventListener("webglcontextlost", onLost);
-    canvas.addEventListener("webglcontextrestored", onRestored);
-    detachContextListeners.current = () => {
-      window.clearTimeout(timer);
-      canvas.removeEventListener("webglcontextlost", onLost);
-      canvas.removeEventListener("webglcontextrestored", onRestored);
-    };
-  }, []);
-  useEffect(() => () => detachContextListeners.current(), []);
+  }, [fail]);
 
-  const onFirstFrame = useCallback(() => setLifecycle("running"), []);
+  // The layers, rebuilt with new GPU resources after each context restore (the old ones were
+  // released when the context was lost).
+  useLayoutEffect(() => {
+    const engine = engineRef.current;
+    const stage = rootRef.current;
+    if (!engine || !stage) return;
+    let layers: StageLayers;
+    try {
+      layers = createLayers(engine, stage, interaction, onQualityStep);
+    } catch (error) {
+      fail(error);
+      return;
+    }
+    layersRef.current = layers;
+    // Runs once: at context loss, or at cleanup (unmount, restore rebuild), whichever comes first.
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      if (layersRef.current === layers) layersRef.current = null;
+      disposeLayers(engine, layers);
+    };
+    releaseLayers.current = release;
+    return () => {
+      if (releaseLayers.current === release) releaseLayers.current = () => {};
+      release();
+    };
+  }, [generation, interaction, onQualityStep, fail]);
 
   const status =
     lifecycle === "lost"
@@ -165,8 +311,46 @@ export default function Stage({ agent, plan, path = "/", onUnavailable }: StageP
             ? "running"
             : "static";
   // Full motion animates continuously; reduced motion renders on demand (resize, changes) only.
-  const frameloop =
+  const frameloop: FrameLoop =
     hidden || lifecycle === "lost" ? "never" : plan.motion === "full" ? "always" : "demand";
+
+  // Discrete props, forwarded after every commit. Each layer applies only what changed and says
+  // so; the engine is then invalidated once (the single on-demand path). Declared after the layer
+  // effect, so new layers receive their props before their first frame. The loop mode and pixel
+  // ratio are applied even while there are no layers (a lost context: the loop must stop).
+  useLayoutEffect(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    try {
+      const layers = layersRef.current;
+      let changed = false;
+      if (layers) {
+        const flowChanged = layers.flow.setProps({
+          pointerEffects: plan.pointerEffects,
+          flowSize: settings.flowSize,
+        });
+        const ambientChanged = layers.ambient.setProps({
+          settings,
+          particleShare: quality.particleShare,
+          motion: plan.motion,
+        });
+        const nexChanged = layers.nex.setProps({
+          particles: settings.nex.particles,
+          particleShare: quality.particleShare,
+          glowLayer: settings.nex.glowLayer,
+          motion: plan.motion,
+          path,
+        });
+        changed = flowChanged || ambientChanged || nexChanged;
+      }
+      // The adapted range (display and zoom changes are followed inside the engine).
+      engine.setDpr(dpr);
+      engine.setLoop(frameloop);
+      if (changed) engine.invalidate();
+    } catch (error) {
+      fail(error);
+    }
+  });
 
   return (
     <div
@@ -178,41 +362,6 @@ export default function Stage({ agent, plan, path = "/", onUnavailable }: StageP
       data-stage-motion={plan.motion}
       data-stage-pointer={plan.pointerEffects ? "on" : "off"}
       data-stage-state={status}
-    >
-      <Canvas
-        // Events are sourced from this pointer-events: none layer, so R3F never intercepts input.
-        eventSource={rootRef}
-        // The adapted range: R3F re-applies it on every render and display change.
-        dpr={dpr}
-        frameloop={frameloop}
-        gl={GL_OPTIONS}
-        camera={CAMERA}
-        flat
-        linear
-        onCreated={onCreated}
-      >
-        <AmbientField
-          key={generation}
-          settings={settings}
-          particleShare={quality.particleShare}
-          onQualityStep={onQualityStep}
-          motion={plan.motion}
-          pointerEffects={plan.pointerEffects}
-          statsRef={rootRef}
-          onFirstFrame={onFirstFrame}
-          interaction={interaction}
-        />
-        <NexAvatar
-          key={`nex-${generation}`}
-          particles={settings.nex.particles}
-          particleShare={quality.particleShare}
-          glowLayer={settings.nex.glowLayer}
-          motion={plan.motion}
-          interaction={interaction}
-          statsRef={rootRef}
-          path={path}
-        />
-      </Canvas>
-    </div>
+    />
   );
 }

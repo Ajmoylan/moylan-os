@@ -1,6 +1,6 @@
 # MOYLAN//OS — Architecture
 
-**Status:** v0.8 · 8 November 2026 · Milestone 1 and Milestone 2.1 complete and reviewed; Milestone 2.2 (first live WebGL environment) complete (§18); Milestone 2.3 (NEX avatar on the homepage) implemented, homepage appearance approved, independent-review findings remediated, awaiting verification (§19); ADR-004 and ADR-007 accepted
+**Status:** v0.9 · 9 November 2026 · Milestone 1 and Milestone 2.1 complete and reviewed; Milestone 2.2 (first live WebGL environment) complete (§18); Milestone 2.3 (NEX avatar on the homepage) implemented, homepage appearance approved, independent-review findings remediated (§19); Milestone 2.4a (plain Three.js stage engine replacing React Three Fiber; ADR-002 amended) implemented, awaiting independent review (§20); ADR-004 and ADR-007 accepted
 **Sources:** master plan v1.0 (PDF + Apple Notes text) and blueprint illustration in `docs/references/` (kept locally; not published in the repository).
 **Companion documents:** [`DESIGN-BRIEF.md`](DESIGN-BRIEF.md) · [`AGENT-PROFILES.md`](AGENT-PROFILES.md) · [`SECURITY.md`](SECURITY.md) · [`PRIVACY-COMPLIANCE.md`](PRIVACY-COMPLIANCE.md)
 
@@ -32,8 +32,8 @@ Versions as installed for Milestone 1 (Node.js 22 LTS locally and in CI).
 | UI framework | **React 19.3** | `@react-router/node` and `isbot` are runtime dependencies even though no app code imports them: React Router's default server entry uses them to prerender pages at build time. |
 | Build tool | **Vite 8** | Per the master plan and project instruction. Known harmless warning: "The `envFile` option is deprecated" is emitted because `@react-router/dev` 7.18.5 passes `envFile: false` to Vite internally; it can't be fixed without patching that package or downgrading Vite a major version. |
 | Routing / prerender | **React Router 7.18 (v7 line), framework mode, `ssr: false` + `prerender`** **(approved)** | Every route is static HTML at build time, then hydrates into an SPA. No runtime server; output in `build/client` deploys as-is to Azure Static Web Apps. React Router v8 exists; v7 is still maintained, and v8 needs Node ≥ 22.22. Migration is a separate, later decision. All five `v8_*` future flags are enabled now (no functional effect here: no loaders/actions/middleware), which removes the deprecation warnings and eases that migration. See ADR-001. |
-| 3D | **Three.js 0.186 + React Three Fiber 9.8** **(approved; in use since Milestone 2.2)** | WebGL2 renderer, lazy-loaded in the stage chunk only. R3F 9 supports React 19 (< 19.4) and shares the app's Zustand 5. Both pinned to releases older than the Dependabot cooldown (three 0.187 was 9 days old). Known upstream console warning: R3F 9.8 still uses `THREE.Clock`, which three 0.186 marks deprecated. |
-| 3D helpers | **@react-three/drei** (selectively) | `PerformanceMonitor`, `AdaptiveDpr` and similar. Import per-module to keep bundles lean. |
+| 3D | **Three.js 0.186** with a small framework-free stage engine (`src/experience/engine/`) **(approved; plain engine since Milestone 2.4a)** | WebGL2 renderer, lazy-loaded in the stage chunk only, imported by named classes so it tree-shakes (a lint rule forbids namespace imports of `three` in `src/experience/`). Pinned to a release older than the Dependabot cooldown (three 0.187 was 9 days old). React Three Fiber 9.8 was used in Milestones 2.2–2.3 and removed in Milestone 2.4a (ADR-002 as amended, §20): about 105 KB gz smaller 3D chunk, identical output. |
+| 3D helpers | **None** | drei needs React Three Fiber, which is no longer used (Milestone 2.4a). Frame monitoring and adaptive DPR are implemented in `src/experience/performance/`. |
 | Shaders | **GLSL** via `vite-plugin-glsl` **(proposed)** | `#include` chunks for shared noise/curl functions. |
 | Post-processing | **pmndrs `postprocessing`** (high tier only) | Bloom (mipmap blur), subtle vignette/noise. Lower tiers fake glow in the particle shader. |
 | Animation | **GSAP 3** (+ ScrollTrigger; SplitText for text reveals) | GSAP and all its plugins are now free to use. |
@@ -87,7 +87,7 @@ Dependabot ignores **major-version updates only** for the packages below (`.gith
 │  STAGE LAYER (.os-stage: fixed, z −1, aria-hidden, pointer-events none)  │
 │  ┌───────────────────────────────────────────────────────────────────┐  │
 │  │ src/experience/Stage.tsx (lazy chunk; placeholder in Milestone 1)  │  │
-│  │ Milestone 2+: <Canvas> persistent across routes                    │  │
+│  │ Milestone 2.4a+: engine-owned canvas, persistent across routes     │  │
 │  │   FlowField (pointer → velocity render target)                     │  │
 │  │   AmbientField (background particles + network lines)              │  │
 │  │   AgentCore (one morphing GPU particle system for all 5 agents)    │  │
@@ -171,7 +171,7 @@ moylan-os/
 └─ .github/                          # ci, codeql, dependency-review workflows; dependabot
 ```
 
-**Boundary rule (lint-enforced):** outside `src/experience/` and `src/composition/`, ESLint forbids importing `~/experience/*`, `three` or `@react-three/*`. Only `StageMount` references the 3D layer, and only `Stage.tsx` (lazy) will import Three.js. The build fails if any page loads the stage chunk up front (§9.3). This keeps the 3D layer lazily loadable, testable and removable without breaking the site.
+**Boundary rule (lint-enforced):** outside `src/experience/` and `src/composition/`, ESLint forbids importing `~/experience/*` and `three` (`three/*` included). Only `StageMount` references the 3D layer, through the lazy `Stage.tsx`. Inside `src/experience/` several modules use Three.js (the engine, the ambient field, the flow simulation and flow map, NEX), always through **named imports**: a second ESLint rule there forbids namespace imports and `export *` of `three` (type-only namespace imports are allowed), so the library stays tree-shaken (§9.3). The build fails if any page loads the stage chunk up front (§9.3). This keeps the 3D layer lazily loadable, testable and removable without breaking the site.
 
 ## 6. The interactive 3D agent system
 
@@ -316,10 +316,10 @@ Nothing waits on the 3D chunk. If it fails to load, throws, or WebGL is unavaila
 | **2 Medium** | Coarse pointer (touch) or ≤ 4 GB device memory | 30k | ~6k | 128² | 1.5 | none |
 | **3 High** | Everything else (including browsers that don't expose memory/cores) | 30k (the approved NEX density; tier 3 adds the glow layer and DPR 2) | ~12k | 256² | 2.0 | NEX duplicate glow layer (bloom pass pending a budget decision, §9.3) |
 
-- **Runtime adaptation (implemented in Milestone 2.2, step-down only):** a frame-time monitor (one-second windows) asks for a step after two consecutive windows over 24 ms: first the DPR (−0.5 per step, not below 1), then the share of particles drawn (halved, not below 25%). It never steps back up automatically; stepping up cautiously after a sustained recovery is planned. The adapted values are the stage's single source of truth for quality (`performance/quality.ts`, held as low-frequency React state in `Stage`): the Canvas `dpr` and the geometry draw range are derived from them on every render, so route, visibility and motion changes, tier changes and context restores keep the adapted quality. It resets only when the stage unmounts (motion Off, Save-Data) and is then re-learned.
+- **Runtime adaptation (implemented in Milestone 2.2, step-down only):** a frame-time monitor (one-second windows) asks for a step after two consecutive windows over 24 ms: first the DPR (−0.5 per step, not below 1), then the share of particles drawn (halved, not below 25%). It never steps back up automatically; stepping up cautiously after a sustained recovery is planned. The adapted values are the stage's single source of truth for quality (`performance/quality.ts`, held as low-frequency React state in `Stage`): the engine's DPR range and the geometry draw range are derived from them on every render, so route, visibility and motion changes, tier changes and context restores keep the adapted quality. It resets only when the stage unmounts (motion Off, Save-Data) and is then re-learned.
 - **Backing-pixel limit (implemented in the Milestone 2.2 review):** independently of the DPR cap, the drawing buffer is kept within a per-tier pixel budget (tier 1: 1920×1080, tier 2: 2560×1440, tier 3: 3840×2160 backing pixels). On larger viewports the DPR is lowered to fit (floored to 0.125 steps, minimum 0.5). The minimum DPR takes precedence over the pixel target: on exceptionally large viewports, above four times the tier's pixel budget in CSS pixels (for example beyond 7680×4320 CSS pixels on tier 3), DPR 0.5 still exceeds the target and the buffer is allowed to, bounded at a quarter of the CSS pixel area. A 27-inch 5K display renders at DPR 1.5 rather than 2 (≈ 33 MB instead of ≈ 59 MB of colour buffer), while typical laptops and phones keep their full tier cap. Points are sized by DPR, so the look is unchanged apart from sharpness. Every later full-screen pass (bloom, NEX effects) inherits this bound.
 - **Render only when visible:** stop the frame loop when the tab is hidden (`visibilitychange`), when the canvas is scrolled fully out of view, or when the user pauses.
-- **No allocations in `useFrame`**; reuse vectors; uniforms mutated in place.
+- **No allocations in the frame loop** (layer `update()` methods); reuse vectors; uniforms mutated in place.
 - **Draw-call budget:** < 15 on any view.
 
 ### 9.3 Budgets
@@ -328,22 +328,33 @@ Two separate JavaScript budgets, **enforced on every build** by `scripts/postbui
 
 | Budget | Limit (gzip) | Measured (Milestone 1) | How it's measured |
 |---|---|---|---|
-| **Initial application JS**, per prerendered page | ≤ 125 KB | ≈ 120.7 KB (home, Milestone 2.2) | Every script the page's HTML references, plus their static-import closure |
-| **Lazy 3D stage** | ≤ 250 KB | ≈ 248.7 KB (Milestone 2.3 after review: Three.js + R3F + the ambient field, shared flow map and interaction interface, probe, quality control and NEX; was 240.4 KB) | The `Stage-*.js` chunk plus everything reachable from it through static **and nested dynamic** `import()`s, minus chunks already in any page's initial set |
+| **Initial application JS**, per prerendered page | ≤ 125 KB | 120.0 KB (home, Milestone 2.4a; 120.8 KB in Milestone 2.3) | Every script the page's HTML references, plus their static-import closure |
+| **Lazy 3D stage** | ≤ 250 KB | 143.9 KB (Milestone 2.4a: Three.js + the plain engine, the ambient field, shared flow map and interaction interface, probe, quality control and NEX; 248.7 KB with R3F in Milestone 2.3) | The `Stage-*.js` chunk plus everything reachable from it through static **and nested dynamic** `import()`s, minus chunks already in any page's initial set |
 | Stage isolation | Must be 0 | 0 | The build fails if any page's initial set contains the stage chunk |
+| Engine-core regression target (Milestone 2.4a) | ≈ 150 KB, **reported, not enforced** | 143.9 KB | The same 3D figure. `postbuild.mjs` prints the target with every build and a warning when the 3D closure exceeds it; the enforced limit stays 250 KB |
+
+**Engine-core regression target (Milestone 2.4a).** Removing React Three Fiber cut the 3D closure from 248.7 to 143.9 KB gz (clean `npm ci` production build). The enforced budgets are unchanged (125 KB initial, 250 KB 3D). The ≈ 150 KB target keeps the engine core honest: anything that pushes the closure past it (a namespace import of `three`, a heavy addon, an accidental dependency) is reported on every build and must be explained in the change that causes it, rather than silently absorbed by the 250 KB cap. Planned features (AgentCore, the specialists, morphing, bloom) will raise the figure deliberately; each is to be measured against this baseline and the target re-based by decision, not by drift.
 
 **Nested 3D chunks:** if the 3D layer is later split further (e.g. post-processing or a shape-generation worker loaded on demand), those chunks are found by following dynamic imports from the stage chunk and count towards the 3D budget, not the initial one. If the 3D layer grows past 250 KB in total, sub-budgets per lazy chunk (e.g. core stage vs. tier-3 post-processing) will be introduced rather than raising the cap silently. Web Worker files emitted by Vite (`new Worker(new URL(...), { type: "module" })`) aren't reached through `import()`; when the first worker is added, the budget script will be extended to include `*.worker-*.js` assets in the 3D total.
 
 The 125 KB initial budget was revised from 90 KB because the React 19 + React Router framework baseline alone is ≈ 110 KB. That leaves little headroom: new initial-bundle dependencies need justification.
 
-**Headroom and the NEX allocation (historical: the Milestone 2.2 planning allocation, made in that milestone's review before NEX existed).** Both budgets stay as they are; raising either needs explicit approval. The figures in the next two tables are as planned then; the measured Milestone 2.3 result follows them.
+**Headroom and the NEX allocation (historical: the Milestone 2.2 planning allocation, made in that milestone's review before NEX existed; superseded by the Milestone 2.4a figures above).** Both budgets stay as they are; raising either needs explicit approval. The figures in the next two tables are as planned then; the measured Milestone 2.3 result follows them.
 
 | | Budget | Now | Headroom |
 |---|---|---|---|
 | Initial JS (largest page) | 125 KB | 120.8 KB (Milestone 2.3) | ≈ 4.2 KB |
-| Lazy 3D closure | 250 KB | 248.7 KB (Milestone 2.3 after review) | ≈ 1.3 KB |
+| Lazy 3D closure | 250 KB | 248.7 KB (Milestone 2.3 after review; 143.9 KB since Milestone 2.4a, ≈ 106 KB headroom) | ≈ 1.3 KB |
 
-The 3D figure is the **whole lazy dependency closure**: the stage chunk plus every chunk reachable from it through static and dynamic imports that no page loads up front. Since Milestone 2.3 that is the single `Stage-*.js` chunk: the small runtime chunks it shares (scheduler, zustand's vanilla store, the JSX runtime and the bundler runtime) are already in every page's initial set, so they are counted once, as initial JS. Of the 248.7 KB, the project's own stage code (stage, ambient field, flow map and interaction interface, probe, quality control, NEX and shaders) is ≈ 15 KB; the rest is Three.js and R3F, which tree-shake poorly. Using more Three.js classes therefore costs little, but any new package or Three.js addon (`three/examples/jsm/...`) counts in full.
+The 3D figure is the **whole lazy dependency closure**: the stage chunk plus every chunk reachable from it through static and dynamic imports that no page loads up front. Since Milestone 2.3 that is the single `Stage-*.js` chunk.
+
+**Shared chunks:**
+- **Milestone 2.3:** R3F imported React's scheduler and zustand's vanilla store, so the bundler split them, the JSX runtime and its own runtime into small chunks shared with every page's initial set. Those were counted once, as initial JS.
+- **Since Milestone 2.4a:** the stage imports neither, so the only chunk it shares with the initial set is the JSX runtime (counted as initial JS). The audit confirms there are no orphan chunks.
+
+**Composition:**
+- **Milestone 2.3 (248.7 KB):** the project's own stage code was ≈ 15 KB; the rest was Three.js and R3F. R3F registered the entire Three.js namespace as its element catalogue, so no Three.js class could be tree-shaken.
+- **Milestone 2.4a (143.9 KB):** Three.js ≈ 94–99 KB and project code ≈ 8 KB, plus Three.js's GLSL shader-chunk strings. The stage imports named Three.js classes only, and a lint rule forbids namespace imports of `three` in `src/experience/`. Every additional Three.js class now costs its real size, and any new package or Three.js addon (`three/examples/jsm/...`) counts in full.
 
 Milestone 2.2 planning allocation for NEX (then expected in Milestone 3, delivered in Milestone 2.3), within the 9.6 KB headroom of the time:
 
@@ -380,9 +391,11 @@ Other targets (measured with Lighthouse CI from Phase 6):
 2. **RGBA8** (`UnsignedByteType`): velocity encoded as `0.5 + v * scale` per channel with clamping. Lower precision and range, so dissipation and injection are tuned per format to avoid banding and drift.
 3. **Disabled:** no flow map. Particles keep idle motion and a cheap analytic pointer falloff computed in the vertex shader (no render targets).
 
-The chosen format is published as `data-stage-flow` (for debugging) and cached per renderer, so the probe runs once per stage, never per frame; a later flow map (switching Reduced → Full) reuses the result.
+The chosen format is published as `data-stage-flow` (for debugging) and cached per renderer, so the probe runs once per context, never per frame; a later flow map (switching Reduced → Full) reuses the result. **Since Milestone 2.4a** a restored context counts as new: the Stage clears the cached format on `webglcontextrestored` (`forgetValidatedFormat()`), so the rebuilt flow map validates again, once, on the restored context (which may sit on another GPU or driver after a reset), in the same half-float → RGBA8 → analytic order.
 
-**Context creation failure:** renderer creation is wrapped in try/catch. On failure the stage unmounts itself and reports to `StageMount`, which records tier 0 for the session (in memory only, no storage) and leaves the static design.
+**Context creation failure:** renderer creation is wrapped in try/catch. On failure the stage unmounts itself and reports to `StageMount`, which records tier 0 for the session (in memory only, no storage) and leaves the static design. Since Milestone 2.4a, construction is transactional (§20): whatever was acquired before the failure (renderer, context, listeners, observers, the canvas) is released before the report.
+
+**Fatal setup and frame errors (Milestone 2.4a, §20):** a layer that fails to construct or to apply its props (including when rebuilding after a context restore), and any throw from a frame's simulation, update or rendering, take the same path: the frame loop stops at once (no further frames are scheduled), the engine and its layers are disposed (GPU resources, listeners and the canvas released), and `StageMount` is told exactly once, which keeps the static design for the rest of the visit. Errors are never swallowed while the loop keeps running.
 
 **Context loss and recovery:**
 
@@ -396,11 +409,11 @@ The chosen format is published as `data-stage-flow` (for debugging) and cached p
 - Effective motion `reduced` (from the OS preference under System, or an explicit Reduced choice): tier ≤ 1, `pointerEffects: false` (fully assembled forms, slow idle, no flow map and no cursor displacement, no arrival or morph animation; cross-fades instead). **Implemented in Milestone 2.1:** the OS preference is followed live through a `matchMedia` change listener, and the stage plan updates on every change (tested in `motion.spec.ts`).
 - Save-Data: tier 0. The 3D chunk is never requested, even with an explicit Full choice (implemented and tested). **Runtime changes (implemented in Milestone 2.2):** where the browser fires the Network Information `change` event (Chromium-based browsers), `StageMount` follows it with one feature-detected listener, removed on cleanup: Save-Data on → tier 0, which unmounts the stage and releases its GPU resources; off → the stage loads again (the chunk is already cached). Where no change event exists (Safari, Firefox), Save-Data is sampled at initial detection and respected for the rest of the visit. Both directions are tested at runtime in `webgl.spec.ts`.
 - Effective motion `off` (visible control, implemented in Milestone 2.1): tier 0. `StageMount` unmounts a loaded stage and downloads nothing if it hasn't loaded yet. From Milestone 2.2 the render loop stops and the canvas fades to the static design before unmounting. Interaction with the OS preference is defined in §10 (motion preference policy).
-- **Stage failure** (load or render error) disables the stage for the rest of the session, held in memory in `StageMount`, so turning motion Off and on again never retries a failed stage.
+- **Stage failure** (load, setup or render error, or a fatal frame error) disables the stage for the rest of the session, held in memory in `StageMount`, so turning motion Off and on again never retries a failed stage.
 
 **Separation from essential content:** enforced by the composition boundary (§5), the lazy import, the build's stage-isolation check (§9.3) and Playwright tests confirming the stage chunk isn't requested with Save-Data or without WebGL2.
 
-**Content Security Policy stays restrictive.** Three.js and R3F need neither `unsafe-eval` nor `unsafe-inline`: GLSL is compiled by the GPU driver, not JavaScript `eval`. Planned, reviewed additions only:
+**Content Security Policy stays restrictive.** Three.js needs neither `unsafe-eval` nor `unsafe-inline`: GLSL is compiled by the GPU driver, not JavaScript `eval`. Planned, reviewed additions only:
 - `worker-src 'self'` if shape generation moves to a Web Worker (Vite emits workers as same-origin files; no `blob:`).
 - No `img-src`/`connect-src` changes: textures and any assets are same-origin.
 - Runtime style changes by GSAP use the CSSOM, which `style-src 'self'` allows.
@@ -568,7 +581,7 @@ Full controls: SECURITY.md §12 (OWASP Top 10 for LLM Applications 2025) and PRI
 | ADR | Decision | Status |
 |---|---|---|
 | 001 | Vite + React Router v7 framework mode with static prerendering (`ssr: false`); no runtime SSR | **Accepted** (7 Nov 2026) |
-| 002 | Single persistent R3F canvas behind a semantic DOM layer; the DOM never imports the 3D layer | **Accepted** |
+| 002 | Single persistent WebGL canvas, owned by one framework-free Three.js engine, behind a semantic DOM layer; the DOM never imports the 3D layer | **Accepted; amended in Milestone 2.4a** (9 Nov 2026: was "single persistent R3F canvas"; details below) |
 | 003 | All agents share one morphing GPU particle system with equal-N shape generators | **Accepted** |
 | 004 | One shared low-resolution pointer flow map drives all cursor interaction; GPGPU deferred | **Accepted with constraints** (7 Nov 2026, details below) |
 | 005 | GSAP master timeline orchestrates DOM + WebGL transitions; no View Transitions API in v1 | Proposed (review at Phase 3) |
@@ -580,6 +593,20 @@ Full controls: SECURITY.md §12 (OWASP Top 10 for LLM Applications 2025) and PRI
 | 011 | Unknown URLs return a real 404 (prerendered `/404.html`), not an SPA fallback | **Accepted** (implemented) |
 | 012 | One route manifest (`src/routing/manifest.ts`) generates the router config and owns route → agent mapping; `agentForPath()` covers 404s and project slugs | **Accepted** (implemented) |
 | 013 | Local capability detection (`planStage`) instead of `detect-gpu` or other network-dependent benchmarks; root-level `StageMount` is the only bridge to the lazy 3D chunk | **Accepted** (implemented; replaces the detect-gpu proposal) |
+
+### ADR-002: Single persistent canvas, plain Three.js engine (amended in Milestone 2.4a)
+
+**Unchanged:** exactly one persistent WebGL canvas for the whole visit, behind the semantic DOM; decorative only (`aria-hidden`, `pointer-events: none`); lazy-loaded; only `src/composition/StageMount.tsx` references the 3D layer, and only `src/experience/` may import Three.js (lint-enforced).
+
+**Amended:** the canvas is no longer an R3F `<Canvas>`. It is created and owned by a small framework-free engine (`src/experience/engine/Engine.ts`): one `WebGLRenderer`, one scene, one perspective camera, one requestAnimationFrame loop. `Stage.tsx` is a thin React wrapper that owns the policy (lifecycle, quality, motion, context-loss limits, failure fallback) and forwards discrete props to plain layer classes (`FlowSimulation`, `AmbientField`, `NexAvatar`).
+
+**Why:**
+
+- **Size.** R3F registers the entire Three.js namespace as its element catalogue, which defeats tree-shaking, and ships its own reconciler. Removing it cut the 3D closure from 248.7 to 143.9 KB gz (−104.8 KB, −42 %) with byte-identical rendering. That left about 1.3 KB of headroom before and about 106 KB after, inside the same 250 KB budget.
+- **Fit.** The stage never used R3F's strengths (declarative scene graphs, raycast events, drei). ADR-007 already keeps per-frame state out of React, and the planned AgentCore (data textures, target slots, one shader program) is imperative by nature.
+- **Fewer moving parts.** One runtime dependency and its transitive packages are gone. React upgrades no longer wait for R3F compatibility, and R3F's deprecated `THREE.Clock` warning disappears.
+
+**Costs accepted:** the project owns the loop, sizing, pixel-ratio and disposal mechanics and their React-lifecycle edge cases, such as StrictMode effect replay, which the spike hit and fixed. Layers are imperative classes with explicit change-only `setProps()`. These are covered by unit tests with fault injection and by the end-to-end suite (§20).
 
 ### ADR-004: Shared pointer flow map (accepted with constraints)
 
@@ -597,7 +624,7 @@ Full controls: SECURITY.md §12 (OWASP Top 10 for LLM Applications 2025) and PRI
 - **Decision:** Zustand may hold **low-frequency semantic state** only: selected/active agent, transition requests and phase, quality tier, pause state, motion preference (site setting and effective mode).
 - **Constraints:**
   - **Pointer position, pointer velocity, frame timing and per-frame interpolation** live in mutable refs or preallocated typed arrays/vectors owned by the stage, never in React or Zustand state.
-  - **Continuous visual state** (morph progress, colours, flow field, camera offsets) lives in GPU uniforms and textures, written in `useFrame` or by GSAP tweening plain objects/uniforms.
+  - **Continuous visual state** (morph progress, colours, flow field, camera offsets) lives in GPU uniforms and textures, written in the stage engine's layer `update()` methods (`useFrame` under R3F until Milestone 2.4a) or by GSAP tweening plain objects/uniforms.
   - **No React `setState` and no Zustand `set` on every animation frame.** Store updates happen on discrete events (route change, hover start/end, tier change, toggle).
   - **No React component subscribes to continuous animation data.** Components select only the semantic slices they render; the render loop reads the store with `getState()` without subscribing.
   - The motion preference follows the policy in §10.
@@ -616,7 +643,8 @@ Aligned with the master plan's phases. Each milestone ends with something demons
 | **2 · M2.1 Runtime motion preferences** | Live `prefers-reduced-motion` handling, the motion preference policy and store, the visible motion control, stage-plan integration, tests (§10, §17) | ✅ Implemented, awaiting review |
 | **2 · M2.2 First living environment** | Three.js/R3F stage, ambient GPU particle field, shared FlowField (ADR-004), frame-time adaptation (step-down), context loss/restore, runtime Save-Data (§18) | ✅ Implemented; visual direction approved; review findings remediated, awaiting independent verification |
 | **2 · M2.3 NEX avatar** | The approved NEX form (V3) in the live stage on the homepage: procedural shape, arrival, idle, cursor response, fallbacks, tests (§19). Brings forward the NEX part of M3 | ✅ Implemented; appearance approved; review findings remediated, awaiting verification |
-| **2 · M3 AgentCore** | Generalise the NEX layer into the shared AgentCore (palette, shape swap, morph timeline) | After M2.3 review |
+| **2 · M2.4a Stage engine** | Replace React Three Fiber with a framework-free Three.js engine; fatal-error and transactional-construction policies; explicit frame phases (§20) | ✅ Implemented, awaiting independent review |
+| **2 · M3 AgentCore** | Generalise the NEX layer into the shared AgentCore (palette, shape swap, morph timeline) | After M2.4a review |
 | **2 · M4 Prototype polish** | Pathway colour preview, fallbacks, performance tuning, Lighthouse | After M3 review |
 | **3 Agent world** | NEX → FORGE morph spike, then all specialists, transitions and environments | |
 | **4 Real content** | Accurate projects, CV, credentials, case studies (MDX) | |
@@ -704,7 +732,7 @@ No critical or high findings. Addressed:
 
 ### Not in Milestone 2.1
 
-Three.js / R3F, the GPU particle system, the flow map, GSAP motion, context-loss handling and the runtime frame-time monitor (Milestone 2.2+). Persisting the motion choice across visits was considered and not adopted (PRIVACY-COMPLIANCE §4.3).
+Three.js (with R3F until Milestone 2.4a), the GPU particle system, the flow map, GSAP motion, context-loss handling and the runtime frame-time monitor (Milestone 2.2+). Persisting the motion choice across visits was considered and not adopted (PRIVACY-COMPLIANCE §4.3).
 
 ---
 
@@ -714,7 +742,7 @@ Three.js / R3F, the GPU particle system, the flow map, GSAP motion, context-loss
 
 ### Delivered
 
-- **Stage** (`src/experience/Stage.tsx`): one persistent R3F canvas inside the existing lazy boundary. WebGL2 with `failIfMajorPerformanceCaveat`, no depth or stencil buffer, no antialiasing, transparent, events sourced from the `pointer-events: none` stage layer so the canvas never intercepts input. The canvas fades in only after its first frame. `data-stage-state` is `starting | running | static | paused | lost`.
+- **Stage** (`src/experience/Stage.tsx`): one persistent R3F canvas inside the existing lazy boundary (since Milestone 2.4a the canvas is owned by a plain Three.js engine, §20). WebGL2 with `failIfMajorPerformanceCaveat`, no depth or stencil buffer, no antialiasing, transparent, events sourced from the `pointer-events: none` stage layer so the canvas never intercepts input. The canvas fades in only after its first frame. `data-stage-state` is `starting | running | static | paused | lost`.
 - **Ambient field** (`ambient/`): §7.2. One draw call; tier counts 2k / 6k / 12k; DPR caps 1 / 1.5 / 2.
 - **Pointer flow map** (`flow/`): §7.1 (ADR-004), with the half-float → RGBA8 → analytic fallback; 64² / 128² / 256² by tier.
 - **Motion modes:** Full animates continuously with pointer effects. Reduced renders one still, fully formed frame on demand (no animation loop, no flow map, no pointer listeners). Off unmounts the stage (no canvas, no GPU work). System follows the OS live. All tested with a real renderer.
@@ -769,9 +797,9 @@ A reference model was designed with Higgsfield and inspected locally. Its *compo
 
 ### Delivered
 
-- **`src/experience/nex/`:** `params.ts` (approved parameters), `shape.ts` (pure seeded generator, §6.1), `motion.ts` (orbit frames, breathing, sway), `anchor.ts` (event-driven anchor measurement), `placement.ts` (pure anchor maths), `shaders.ts` (GLSL; the approved look is built in as constants), `NexAvatar.tsx` (the R3F layer).
+- **`src/experience/nex/`:** `params.ts` (approved parameters), `shape.ts` (pure seeded generator, §6.1), `motion.ts` (orbit frames, breathing, sway), `anchor.ts` (event-driven anchor measurement), `placement.ts` (pure anchor maths), `shaders.ts` (GLSL; the approved look is built in as constants), `NexAvatar.tsx` (the R3F layer; since Milestone 2.4a `NexAvatar.ts`, a plain engine layer, §20).
 - **One stage, one renderer:** NEX is a second layer in the existing canvas next to the ambient field, sharing the frame loop, the adapted quality state (DPR and particle share) and the context-loss remount. One perspective camera serves the 3D agents; the ambient field still draws in screen space.
-- **One cursor substrate (ADR-004):** `flow/interaction.ts` is the shared interface. The ambient field owns it: it attaches the only `PointerTracker`, runs the only `FlowField` simulation and writes the result (`mode`: half-float, RGBA8, analytic or none; the flow texture; the analytic pointer and velocity) into one mutable `StageInteraction` object owned by the Stage. Every consumer, the ambient field included, copies it into its uniforms with `syncInteraction()` and samples it in GLSL with the shared `sampleFlow()` (`FLOW_GLSL`), so flow-map decoding and the analytic fallback exist once. NEX samples it at each particle's screen position: the cursor's wake carries particles along (filaments and dust most, the core least) and makes them glow, and they settle as the flow dissipates. Under reduced or off motion the mode is `none` and every pointer uniform is zeroed. No extra listener, simulation or GPU pass.
+- **One cursor substrate (ADR-004):** `flow/interaction.ts` is the shared interface. In Milestone 2.3 the ambient field owned it. Since Milestone 2.4a, `FlowSimulation` (the engine's simulate phase, §20) owns and writes it, and the ambient field and NEX only consume it. The owner attaches the only `PointerTracker`, runs the only `FlowField` simulation and writes the result (`mode`: half-float, RGBA8, analytic or none; the flow texture; the analytic pointer and velocity) into one mutable `StageInteraction` object, which the Stage allocates and passes to every layer. Every consumer, the ambient field included, copies it into its uniforms with `syncInteraction()` and samples it in GLSL with the shared `sampleFlow()` (`FLOW_GLSL`), so flow-map decoding and the analytic fallback exist once. NEX samples it at each particle's screen position: the cursor's wake carries particles along (filaments and dust most, the core least) and makes them glow, and they settle as the flow dissipates. Under reduced or off motion the mode is `none` and every pointer uniform is zeroed. No extra listener, simulation or GPU pass.
 - **Layers:** particles (core, rings, beads, filaments, halo; one draw), ring hairlines (one `LineSegments` draw for all rings), a fresnel energy shell, a volumetric core-glow billboard, an atmosphere billboard and, on tier 3, the duplicate glow layer (§6.3). Additive, premultiplied, no depth buffer.
 - **Composition:** the homepage marks NEX's place with a layout-only element (`data-stage-anchor="nex"`, the hero figure). NEX is centred on it and its ring cage fills 88 % of the box's shorter side, and turned so its three-quarter view faces the camera. The box is measured only after something can have moved or resized it (`anchor.ts`: scroll, window resize, a `ResizeObserver` on the anchor and the page body for responsive reflow and enlarged text, web fonts loading, or a new anchor after navigation), and the placement is recomputed only when the box, viewport or field of view changed: no layout read or allocation on ordinary frames. Desktop: beside the hero text. Narrow screens: above the heading (`order-first`; the figure isn't focusable, so focus order is unchanged). Routes without the anchor fade NEX out and stop drawing it; returning replays the arrival.
 - **Poster:** the static emblem stays in the DOM with NEX's text equivalent and is cross-faded out with CSS only while the stage reports NEX drawn (`data-nex-state="visible"` on a running, static or paused stage). Lost context, Off, Save-Data, no WebGL2 or a failed stage leave it visible.
@@ -817,5 +845,98 @@ The approved V3 look, composition and motion are unchanged.
 
 Recorded in the final Milestone 2.3 review; not implemented in this milestone.
 
-- **`NexMotion.update()` allocates a closure per frame:** the `cycle` helper is created on every call. Hoist it to a module-level function (or inline it) so the render loop allocates nothing.
+- **`NexMotion.update()` allocates a closure per frame (scheduled for Milestone 2.4b):** the `cycle` helper is created on every call. Hoist it to a module-level function (or inline it) so the render loop allocates nothing.
 - **Anchor font-load coverage:** `AnchorTracker` re-measures on the `FontFaceSet` `loadingdone` event, but no test dispatches that event directly. Add a unit test with a stubbed `document.fonts` that asserts a re-measurement and that `detach()` removes the listener.
+
+---
+
+## 20. Milestone 2.4a: plain Three.js stage engine (implemented, awaiting independent review)
+
+**Goal:** replace React Three Fiber with a small framework-free Three.js engine, with no change to the approved NEX V3 appearance, the ambient field, the shared flow, the motion policy, the fallbacks, security, privacy or accessibility. A feasibility spike measured the saving and pixel parity first; an independent review confirmed it and asked for two fixes (fatal frame errors, partial-initialisation leaks), both part of this milestone. ADR-002 is amended accordingly (§14).
+
+### Responsibilities
+
+| Part | Owns | Does not own |
+|---|---|---|
+| **`engine/Engine.ts`** | The canvas (created per engine, appended to the stage element, removed on dispose; never reused), the `WebGLRenderer` and its context, the camera and scene, the size and pixel-ratio observers, the canvas context-event listeners, the frame loop and the registered layers | Policy: lifecycle state, quality, motion, context-loss limits, what to do on failure |
+| **`Stage.tsx`** (React) | Policy and wiring: creates the engine and layers in layout effects, forwards discrete props after each commit, holds lifecycle and adapted-quality state, applies the context-loss limits, runs the single `fail()` path | Anything per frame (ADR-007) |
+| **Layers** (`FlowSimulation`, `AmbientField`, `NexAvatar`) | Their own GPU resources, listeners and published stage attributes; `setProps()` applies only what changed and returns whether anything did; `dispose()` is idempotent | Scheduling, invalidation, other layers |
+| **`engine/resources.ts`** | Transactional ownership: every acquisition registers its release as it happens; release runs newest-first, once, and every step runs even if one throws | — |
+
+### Frame scheduling
+
+- **Loop modes:** `always` (full motion), `demand` (reduced motion: one frame per invalidation, coalesced; an invalidation during a frame requests exactly one more) and `never` (hidden tab, lost context). The frame delta is in seconds from a clock restarted on every mode change, so a pause is never one huge step.
+- **Explicit phases**, in this order every frame, whatever order the layers were added in:
+  1. `simulate`: shared simulations other layers read. Today that is `FlowSimulation`, the only pointer listener and the only flow-map pass (ADR-004), split out of the ambient field in this milestone.
+  2. `update`: environments and agents write their uniforms (the ambient field, NEX; AgentCore later).
+  3. Render: the scene is drawn. Post-processing, when approved, will replace this step rather than add a phase.
+  Consumers therefore always read the interaction written in the same frame, without depending on registration order. The first-frame callback fires after the first successful render.
+
+### Invalidation
+
+`engine.invalidate()` is the single on-demand path. The engine invalidates itself on size, pixel-ratio, loop-mode and layer changes. The Stage invalidates once per commit in which any layer's `setProps()` reported a change; layers never invalidate on their own. Event sources (the NEX anchor tracker after scroll, resize, fonts or navigation) call the same function. Pixel-ratio changes from another display or browser zoom are followed with a `(resolution: Ndppx)` media query that is released and re-created after each change, and removed on dispose.
+
+### Disposal and transactional construction
+
+- **Engine construction** acquires the canvas, then the **WebGL2 context itself** (`canvas.getContext("webgl2", …)` with exactly the attributes Three.js would request, registered for an explicit release through `WEBGL_lose_context` before anything else can fail; where a browser does not expose that extension, the release step does nothing and reclaiming the context is left to the browser, as for any unreferenced context), then the renderer (constructed with that `context`), renderer configuration, camera, context listeners, resize listener, `ResizeObserver`, DPR watcher and first measurement, each registered for release as it happens. A failure at any step releases everything before it and removes the canvas before the error propagates.
+- **Layer construction** works the same way: materials, geometries, scene entries, the anchor tracker and published attributes. `createLayers()` adds the layers to the engine only once all three exist, and disposes the ones already created if a later one fails.
+- **Prop application** is transactional per resource: a new geometry replaces the old one only once it is complete; the flow map and pointer listener are released if either fails to start (`PointerTracker.attach()` now marks itself attached first, so a part-way failure is fully undone; `FlowField.create()` releases its render targets if construction fails).
+- **`Engine.dispose()`** stops the loop, disposes the layers, then releases everything else newest-first: watchers, observers, listeners (canvas listeners before the context is released, so disposal never reports a context loss), renderer and context (`dispose()` + `forceContextLoss()`, which also relies on `WEBGL_lose_context`; without it the browser reclaims the context once it is unreferenced), and finally the canvas. It is idempotent and safe from inside a frame.
+- **Context loss releases the layers at once** (cross-browser fix). WebGL calls are silent no-ops on a lost context, whereas deleting the old layers' GPU objects after a restore would target the new context: Chromium logs `INVALID_OPERATION … object does not belong to this context` as warnings, and WebKit logs them as console **errors**. The layers are disposed in the `webglcontextlost` handler, the loop stops, and fresh layers are built on restore. Milestone 2.3 (R3F) and the first version of this engine disposed them after the restore. Tested by `Stage.test.tsx` and by `tests/e2e/engine.spec.ts` (no foreign-context deletes after a real restore).
+
+### Error recovery
+
+| Failure | Effect |
+|---|---|
+| Renderer or engine construction throws (including inside Three.js after the context exists) | Engine rolls back: the acquired context is explicitly lost (`WEBGL_lose_context`), listeners removed, canvas removed; the original error reaches `fail()`; static design for the visit, no retry |
+| A layer constructor throws (first mount or rebuild after a context restore) | Already-created layers disposed; `fail()` |
+| A layer's `setProps()` throws (first or any later commit) | `fail()` disposes the engine, which disposes every layer |
+| A frame's simulate, update or render step (or the first-frame callback) throws | The engine stops scheduling at once, ignores every later request and reports once; `fail()` |
+| Context lost | Fade out, release the layers at once, wait up to 3 s for a restore (new layers then), at most two losses per visit |
+
+`fail()` is idempotent: it releases the engine (layers, GPU resources, listeners, canvas) and calls `onUnavailable` exactly once. `StageMount` then keeps tier 0 for the session. Nothing retries, and errors are never swallowed while frames continue.
+
+### Tests
+
+- **Unit, with fault injection:** `engine/Engine.test.ts` covers:
+  - the loop modes, the phase order and the clock;
+  - the fatal policy at the simulate, update, render and first-frame steps (no further frames, one report, no restart);
+  - rollback at the renderer-creation, renderer-configuration, observer-setup and first-measurement steps (canvas removed, listeners balanced, renderer released);
+  - DPR media-query replacement and cleanup;
+  - idempotent disposal and repeated create/dispose cycles.
+
+  The other unit suites:
+  - `engine/resources.test.ts`;
+  - `flow/FlowSimulation.test.ts` (one listener, the analytic fallback, release on failure);
+  - `ambient/AmbientField.test.ts` and `nex/NexAvatar.test.ts` (rollback with real Three.js objects, counted `dispose()` calls, change reporting);
+  - `Stage.test.tsx` (every injection point: engine, each layer constructor, each layer's initial and later `setProps`, reconstruction after a restore, fatal frames reported once, StrictMode replay). Mutation-checked: re-introducing the spike's reschedule-after-error behaviour, or skipping the teardown in `fail()`, fails 14 of these tests.
+- **End to end, real renderer:** `tests/e2e/engine.spec.ts` injects faults into the stage's WebGL context:
+  - a draw call that throws mid-visit;
+  - a renderer constructor that fails part-way;
+  - a rebuild after a context restore that fails.
+
+  In each case it asserts the stage and its canvas are gone, the emblem is visible, no further draws occur and motion Off → Full does not retry. A fourth test asserts that a real context restore produces no `does not belong to this context` messages, at warning or error level. All earlier Playwright specs pass unchanged. Further real-browser tests (final review):
+  - the stage's actual WebGL context is lost after a renderer constructor failure and after a fatal frame;
+  - two loss/restore cycles keep one canvas and the exact draw calls per frame (no duplicated loop or layers);
+  - the context keeps the approved attributes;
+  - a restored context re-validates its flow format, keeping RGBA8 or analytic.
+
+### Measurements (production build after a clean `npm ci`; headless Chromium on Apple silicon)
+
+| Item | Milestone 2.3 (R3F) | Milestone 2.4a |
+|---|---|---|
+| Lazy 3D closure (postbuild and an independent audit agree) | 248.7 KB gz | **143.9 KB gz** (Three.js ≈ 94–99, project code ≈ 8, of which the engine ≈ 1.1) |
+| Initial JS, largest page | 120.8 KB gz | 120.0 KB gz |
+| Draw calls per frame | 8 (tier 3) / 7 (tier 2) | 8 / 7 (analytic flow: 7 on tier 3, no flow pass) |
+| Stage chunk received → first frame (Apple M2 Pro, Metal; median of 6 interleaved loads) | 442 ms | 379 ms |
+| JS heap after GC | 6.08 MB | 5.03 MB |
+| Main-thread cost per frame (median, Metal) | 0.2–0.6 ms across runs | 0.2–0.6 ms across runs (no measurable difference; frame interval 16.7 ms in both) |
+
+**Visual parity.** Both builds ran with an injected deterministic clock (`requestAnimationFrame` and `performance.now` replaced, 16 ms steps; 40 ms steps for the slow-frame case). Every `uTime` upload was recorded and the sequences were identical in every scenario. Full-page screenshots on SwiftShader were **pixel-identical** to the Milestone 2.3 build in all ten scenarios: desktop tier 3 and Pixel 7 tier 2 at 8 s of full motion, mid-arrival, reduced motion (both), pointer flow on the half-float, RGBA8 and analytic paths, after a context restore, and after an adaptive-quality step-down (DPR 2 → 1.5). On the hardware GPU (Metal) the migration matched a baseline capture byte for byte in all four scenarios run. There, the baseline's own run-to-run variation is in DOM text compositing, not the canvas.
+
+**Defect fixed in passing:** after a context restore, Milestone 2.3 lost `data-nex-particles`: the old React layer's unmount cleanup ran after the new layer had set it. The engine disposes the old layers before the new ones apply their props.
+
+### Known limitations
+
+- **Browsers tested:** Chromium (the CI suite), and Playwright WebKit 27.2 (Desktop Safari and iPhone 14 profiles, served over HTTPS so the production CSP applies unchanged). In WebKit all applicable e2e specs pass. The only failures are tests that need Chromium's DevTools protocol (text-size emulation) and Tab-focus tests that follow WebKit's macOS keyboard convention; both fail identically on the Milestone 2.3 build. **Not tested:** Firefox (Playwright's Firefox 159 build does not start on this macOS version: "Could not find profile folder"), the installed Safari.app (automation needs a system setting) and physical Android and iOS devices. These remain required before deployment, with the existing real-device profiling gate.
+- **Fast Refresh:** `Stage.tsx` exports constants and `createLayers`, so Vite re-imports `StageMount` instead of fast-refreshing it. HMR still yields exactly one working canvas (verified).

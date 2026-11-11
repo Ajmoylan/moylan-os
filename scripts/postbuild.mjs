@@ -28,6 +28,9 @@ const SITE_URL = "https://moylanos.dev";
 const CONFIG_LIMIT_BYTES = 20 * 1024;
 const BUDGET_INITIAL_JS_GZ = 125 * 1024; // per page, everything loaded before/at hydration
 const BUDGET_STAGE_JS_GZ = 250 * 1024; // lazy 3D chunk + its exclusive dependencies
+// Regression target for the engine core (Milestone 2.4a, ARCHITECTURE §9.3): reported, not enforced.
+// The plain Three.js engine measured 143.9 KB gz; growth past this needs an explanation.
+const TARGET_STAGE_ENGINE_GZ = 150 * 1024;
 
 const fail = (message) => {
   console.error(`\n✖ postbuild: ${message}\n`);
@@ -162,6 +165,14 @@ if (stageBytes > BUDGET_STAGE_JS_GZ) {
   );
 }
 
+if (stageBytes > TARGET_STAGE_ENGINE_GZ) {
+  console.warn(
+    `\n⚠ postbuild: lazy 3D stage ${(stageBytes / 1024).toFixed(1)} KB gz is over the engine-core ` +
+      `regression target of ${TARGET_STAGE_ENGINE_GZ / 1024} KB (ARCHITECTURE §9.3). The enforced ` +
+      `budget is ${BUDGET_STAGE_JS_GZ / 1024} KB; record the reason for the growth.\n`,
+  );
+}
+
 // 7. Sitemap -----------------------------------------------------------------------------------
 const pages = htmlFiles
   .filter((file) => file.endsWith(`${sep}index.html`) || file === join(outDir, "index.html"))
@@ -183,5 +194,5 @@ console.log(
     `config ${(size / 1024).toFixed(1)} KB, ${pages.length} URLs in sitemap.\n` +
     `  budgets: initial JS ≤ ${(largestInitial.bytes / 1024).toFixed(1)} KB gz (largest: ${largestInitial.page}; ` +
     `budget ${BUDGET_INITIAL_JS_GZ / 1024} KB), lazy 3D stage ${(stageBytes / 1024).toFixed(1)} KB gz ` +
-    `(budget ${BUDGET_STAGE_JS_GZ / 1024} KB).`,
+    `(budget ${BUDGET_STAGE_JS_GZ / 1024} KB; engine-core regression target ${TARGET_STAGE_ENGINE_GZ / 1024} KB).`,
 );

@@ -6,10 +6,11 @@ import type { FlowFormat } from "./policy";
  * The stage's single cursor-interaction substrate (ADR-004), shared by every layer that reacts
  * to the pointer: the ambient field now, NEX and the specialist agents later.
  *
- * One owner (the ambient field) attaches the only `PointerTracker`, runs the only `FlowField`
- * simulation and writes this object once per frame. Every consumer copies it into its own
- * uniforms with `syncInteraction()` and samples it in GLSL with `sampleFlow()` (FLOW_GLSL), so
- * the flow-map decoding and the analytic fallback exist exactly once. Mutable fields only:
+ * One owner (`FlowSimulation`, the engine's simulate phase) attaches the only `PointerTracker`,
+ * runs the only `FlowField` simulation and writes this object once per frame, before any consumer
+ * updates. Every consumer copies it into its own uniforms with `syncInteraction()` and samples it
+ * in GLSL with `sampleFlow()` (FLOW_GLSL), so the flow-map decoding and the analytic fallback exist
+ * exactly once. Mutable fields only:
  * nothing here touches React or Zustand state (ADR-007).
  *
  * Mode "none" (motion reduced or off, or pointer effects unavailable) means no flow map, no
