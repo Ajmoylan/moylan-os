@@ -8,12 +8,15 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { AgentId } from "~/agents/registry";
+import { registerDiagnosticDefinition } from "./agents/definitions";
 import type { OrbitTransport } from "./agents/types";
 import { AmbientField } from "./ambient/AmbientField";
 import { ambientLook, settingsForTier } from "./ambient/config";
 import type { StagePlan } from "./capabilities";
 import { AgentCore } from "./core/AgentCore";
-import { forgetOrbitProbe } from "./core/orbits/probe";
+import { AgentCapabilities, rendererLimits } from "./core/capabilities";
+import type { StageEpochs } from "./core/morph/programs";
+import { forgetOrbitProbe, orbitTexturesSupported } from "./core/orbits/probe";
 import { orbitPreferenceFrom } from "./core/orbits/transport";
 import { ShapeCache } from "./core/shapeCache";
 import { Engine, type CameraOptions, type FrameLoop } from "./engine/Engine";
@@ -30,7 +33,12 @@ import {
   resolveDprCap,
   type Quality,
 } from "./performance/quality";
-import { createTransition, type StageTransition } from "./transition/StageTransition";
+import {
+  createMorphReport,
+  createTransition,
+  type MorphReport,
+  type StageTransition,
+} from "./transition/StageTransition";
 import { TransitionClock } from "./transition/TransitionClock";
 
 export interface StageProps {
@@ -46,6 +54,16 @@ export interface StageProps {
    */
   onUnavailable?: () => void;
 }
+
+/**
+ * The first-morph diagnostic switch (Milestone 2.4b.2): `?morph=test` in the URL the stage first
+ * loads with lazily loads the TEST shape and draws it on FORGE's route (`/engineering`), so the
+ * morph runs on real navigation. Read once per page load; never stored (no cookie, no storage), so
+ * an ordinary visit never loads or draws TEST. To be removed before public launch.
+ */
+export const MORPH_DIAGNOSTIC =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("morph") === "test";
 
 /** Context-loss policy (ARCHITECTURE §9.4). */
 export const RESTORE_TIMEOUT_MS = 3000;
@@ -99,8 +117,11 @@ export interface StageShared {
   stage: HTMLElement;
   interaction: StageInteraction;
   transition: StageTransition;
+  report: MorphReport;
   shapes: ShapeCache;
   orbitPreference: OrbitTransport;
+  /** Owner and context epochs: every asynchronous result (morph compiles) is checked against them. */
+  epochs: StageEpochs;
   onQualityStep: (next: Quality) => void;
 }
 
@@ -110,12 +131,19 @@ export interface StageShared {
  * partial set.
  */
 export function createLayers(engine: Engine, shared: StageShared): StageLayers {
-  const { stage, interaction, transition, shapes, orbitPreference, onQualityStep } = shared;
+  const { stage, interaction, transition, report, shapes, orbitPreference, epochs, onQualityStep } =
+    shared;
   const created: { dispose(): void }[] = [];
   try {
     const flow = new FlowSimulation(engine, { stage, interaction });
     created.push(flow);
-    const clock = new TransitionClock(engine, { transition });
+    // One viability assessment per context generation, shared by the clock and AgentCore (§6.6).
+    const capabilities = new AgentCapabilities(
+      rendererLimits(engine.renderer, () => orbitTexturesSupported(engine.renderer)),
+      orbitPreference,
+      epochs.context,
+    );
+    const clock = new TransitionClock(engine, { transition, report, capabilities });
     created.push(clock);
     const ambient = new AmbientField(engine, { stage, interaction, onQualityStep });
     created.push(ambient);
@@ -123,8 +151,11 @@ export function createLayers(engine: Engine, shared: StageShared): StageLayers {
       stage,
       interaction,
       transition,
+      report,
       shapes,
       orbitPreference,
+      epochs,
+      capabilities,
     });
     created.push(core);
     for (const layer of [flow, clock, ambient, core]) engine.add(layer);
@@ -186,10 +217,31 @@ export default function Stage({ agent, plan, path = "/", onUnavailable }: StageP
   const [interaction] = useState(() => createInteraction(ambientLook.cursor.radius));
   /** The shared transition frame (ADR-007): written by the transition clock, read by agents. */
   const [transition] = useState(() => createTransition("nex"));
+  /** AgentCore's answers to morph requests (written by AgentCore, read by the clock). */
+  const [report] = useState(() => createMorphReport());
   /** Generated agent shapes, kept for the stage's lifetime (a context restore reuses them). */
   const [shapes] = useState(() => new ShapeCache());
   /** Orbit transport preference (Milestone 2.4b.1b comparison switch; read once per stage). */
   const [orbitPreference] = useState(() => orbitPreferenceFrom(window.location.search));
+  /** Stage-lifetime epochs (AgentCore's owner epoch; the context's, bumped at loss and restore). */
+  const [epochs] = useState<StageEpochs>(() => ({ owner: 0, context: 0 }));
+  /** With the diagnostic switch, the layers wait for the TEST chunk (it registers TEST first). */
+  const [diagnosticReady, setDiagnosticReady] = useState(!MORPH_DIAGNOSTIC);
+  useEffect(() => {
+    if (!MORPH_DIAGNOSTIC) return;
+    let live = true;
+    import("./agents/test")
+      .then(({ testDefinition }) => registerDiagnosticDefinition(testDefinition))
+      .catch((error: unknown) => {
+        if (import.meta.env.DEV) console.warn("[MOYLAN//OS] TEST diagnostic unavailable:", error);
+      })
+      .finally(() => {
+        if (live) setDiagnosticReady(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
   const [lifecycle, setLifecycle] = useState<LifecycleState>("starting");
   const [quality, setQuality] = useState<Quality>(FULL_QUALITY);
   const onQualityStep = useCallback((next: Quality) => setQuality((q) => lowerOf(q, next)), []);
@@ -258,6 +310,7 @@ export default function Stage({ agent, plan, path = "/", onUnavailable }: StageP
         onFatal: (error) => fail(error),
         onContextLost: (event) => {
           event.preventDefault();
+          epochs.context += 1;
           releaseLayers.current();
           losses += 1;
           setLifecycle("lost");
@@ -270,6 +323,7 @@ export default function Stage({ agent, plan, path = "/", onUnavailable }: StageP
         },
         onContextRestored: () => {
           window.clearTimeout(timer);
+          epochs.context += 1;
           // The restored context validates its flow-map format again before the rebuilt layers
           // use it (it may run on another GPU or driver).
           const restored = engineRef.current;
@@ -302,22 +356,24 @@ export default function Stage({ agent, plan, path = "/", onUnavailable }: StageP
       teardown.current = () => {};
       release();
     };
-  }, [fail]);
+  }, [fail, epochs]);
 
   // The layers, rebuilt with new GPU resources after each context restore (the old ones were
   // released when the context was lost).
   useLayoutEffect(() => {
     const engine = engineRef.current;
     const stage = rootRef.current;
-    if (!engine || !stage) return;
+    if (!engine || !stage || !diagnosticReady) return;
     let layers: StageLayers;
     try {
       layers = createLayers(engine, {
         stage,
         interaction,
         transition,
+        report,
         shapes,
         orbitPreference,
+        epochs,
         onQualityStep,
       });
     } catch (error) {
@@ -338,7 +394,18 @@ export default function Stage({ agent, plan, path = "/", onUnavailable }: StageP
       if (releaseLayers.current === release) releaseLayers.current = () => {};
       release();
     };
-  }, [generation, interaction, transition, shapes, orbitPreference, onQualityStep, fail]);
+  }, [
+    generation,
+    diagnosticReady,
+    interaction,
+    transition,
+    report,
+    shapes,
+    orbitPreference,
+    epochs,
+    onQualityStep,
+    fail,
+  ]);
 
   const status =
     lifecycle === "lost"
@@ -374,7 +441,12 @@ export default function Stage({ agent, plan, path = "/", onUnavailable }: StageP
           particleShare: quality.particleShare,
           motion: plan.motion,
         });
-        const clockChanged = layers.clock.setProps({ agent });
+        const clockChanged = layers.clock.setProps({
+          agent,
+          path,
+          motion: plan.motion,
+          hidden,
+        });
         const coreChanged = layers.core.setProps({
           particles: settings.nex.particles,
           particleShare: quality.particleShare,

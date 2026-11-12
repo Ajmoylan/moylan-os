@@ -112,7 +112,10 @@ function layerClass(kind: Kind) {
 
 vi.mock("./flow/FlowSimulation", () => ({ FlowSimulation: layerClass("flow") }));
 vi.mock("./flow/FlowField", () => ({ forgetValidatedFormat: seen.forget }));
-vi.mock("./core/orbits/probe", () => ({ forgetOrbitProbe: seen.forgetOrbits }));
+vi.mock("./core/orbits/probe", () => ({
+  forgetOrbitProbe: seen.forgetOrbits,
+  orbitTexturesSupported: () => false,
+}));
 vi.mock("./ambient/AmbientField", () => ({ AmbientField: layerClass("ambient") }));
 vi.mock("./transition/TransitionClock", () => ({ TransitionClock: layerClass("clock") }));
 vi.mock("./core/AgentCore", () => ({ AgentCore: layerClass("core") }));
@@ -259,21 +262,31 @@ describe("Stage layers", () => {
     expect(lastNex().path).toBe("/engineering");
   });
 
-  it("AgentCore and the transition clock share one transition frame; the clock gets the agent", () => {
+  it("AgentCore and the transition clock share one frame and one report; the clock gets the route", () => {
     const { rerender } = render(<Stage agent="nex" plan={full} path="/" />);
-    const clock = last("clock").context as unknown as { transition: unknown };
+    const clock = last("clock").context as unknown as { transition: unknown; report: unknown };
     expect(last("core").context.transition).toBe(clock.transition);
-    expect(lastProps<{ agent: string }>("clock")).toEqual({ agent: "nex" });
-    rerender(<Stage agent="forge" plan={full} path="/engineering" />);
-    expect(lastProps<{ agent: string }>("clock")).toEqual({ agent: "forge" });
+    expect(last("core").context.report).toBe(clock.report);
+    expect(lastProps("clock")).toEqual({ agent: "nex", path: "/", motion: "full", hidden: false });
+    rerender(<Stage agent="forge" plan={reduced} path="/engineering" />);
+    expect(lastProps("clock")).toEqual({
+      agent: "forge",
+      path: "/engineering",
+      motion: "reduced",
+      hidden: false,
+    });
+    vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    expect(lastProps<{ hidden: boolean }>("clock").hidden).toBe(true);
   });
 
   it("the transition frame and shape cache live as long as the Stage (kept across restores)", () => {
     render(<Stage agent="nex" plan={full} path="/" />);
-    const { transition, shapes, interaction } = last("core").context;
+    const { transition, report, shapes, interaction } = last("core").context;
     act(() => options().onContextLost!(new Event("webglcontextlost")));
     act(() => options().onContextRestored!());
     expect(last("core").context.transition).toBe(transition);
+    expect(last("core").context.report).toBe(report);
     expect(last("core").context.shapes).toBe(shapes);
     expect(last("core").context.interaction).toBe(interaction);
   });

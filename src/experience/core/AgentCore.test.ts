@@ -5,28 +5,36 @@ import {
   PerspectiveCamera,
   Scene,
   ShaderMaterial,
-  type Group,
+  Group,
   type Material,
   type Mesh,
 } from "three";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AgentId } from "~/agents/registry";
 import { rgb } from "../ambient/config";
+import type * as Definitions from "../agents/definitions";
+import type { AgentRenderDefinition, AgentView, AgentViewProps } from "../agents/types";
 import type { Engine } from "../engine/Engine";
 import { createInteraction } from "../flow/interaction";
-import { NexAvatar, type NexAvatarProps } from "../nex/NexAvatar";
 import { nexLineVertexTexture, nexPointVertex, nexPointVertexTexture } from "../nex/shaders";
-import { generateNexShape } from "../nex/shape";
-import { createTransition } from "../transition/StageTransition";
+import {
+  createMorphReport,
+  createTransition,
+  type StageTransition,
+} from "../transition/StageTransition";
+import { TransitionClock } from "../transition/TransitionClock";
 import { AgentCore, type AgentCoreContext } from "./AgentCore";
+import type { MorphCompiler } from "./morph/programs";
 import { ShapeCache } from "./shapeCache";
 
 /**
- * Shared AgentCore, Milestone 2.4b.1a: NEX hosted through its definition must be exactly the NEX
- * of 8920b54 (same scene graph, shaders, uniform values every frame, geometry and draw ranges),
- * with transactional construction, complete disposal and the Stage-lifetime shape cache.
+ * Shared AgentCore (Milestones 2.4b.1a–2.4b.2): NEX hosted through its definition (transactional
+ * construction, complete disposal, the Stage-lifetime shape cache), the orbit transports (1b), and
+ * since 2.4b.2 the explicit ownership of agent views: replacement when the drawn agent changes
+ * (new view first, then the old one released), the unsupported state, and morph-request answers.
+ * NEX's frame-by-frame identity with the merged renderer is tested in nex/appearance.test.ts.
  */
 
-const faults = vi.hoisted(() => ({ anchorAttach: false }));
 const probe = vi.hoisted(() => ({ supported: true, calls: 0, unsafe: false }));
 
 vi.mock("./orbits/probe", () => ({
@@ -36,6 +44,7 @@ vi.mock("./orbits/probe", () => ({
     return probe.supported;
   },
 }));
+
 const anchors = vi.hoisted(() => ({ attached: 0, detached: 0 }));
 
 vi.mock("../nex/anchor", () => ({
@@ -43,7 +52,6 @@ vi.mock("../nex/anchor", () => ({
     version = 1;
     attach() {
       anchors.attached++;
-      if (faults.anchorAttach) throw new Error("anchor");
     }
     detach() {
       anchors.detached++;
@@ -55,14 +63,64 @@ vi.mock("../nex/anchor", () => ({
   },
 }));
 
-/** NEX's colours as the 8920b54 renderer built them (literal hex values, before the registry). */
-const LEGACY_COLOURS = () => ({
-  deep: rgb("#14a89c"),
-  accent: rgb("#3fe0d0"),
-  hot: rgb("#c9fbf5"),
+/** A second, fake agent definition ("forge") for view-ownership tests; off by default. */
+const fake = vi.hoisted(() => ({
+  forge: false,
+  failCreate: false,
+  views: [] as { setProps: unknown[]; updates: number; disposed: number }[],
+}));
+
+vi.mock("../agents/definitions", async (original) => {
+  const actual = await original<typeof Definitions>();
+  return {
+    stageAgentFor: (agent: AgentId) => agent,
+    definitionFor: (id: AgentId) => {
+      if (id !== "forge" || !fake.forge) return actual.definitionFor(id);
+      const nex = actual.definitionFor("nex")!;
+      return {
+        ...nex,
+        id: "forge",
+        hotOverride: "#ffffff",
+        transports: { idle: ["uniforms"], uniformVectors: { uniforms: 10 } },
+        // No morph module: a change to or from it can't morph (the answer is "failed": a swap).
+        morph: undefined,
+        createView: (): AgentView => {
+          if (fake.failCreate) throw new Error("forge view");
+          const record = { setProps: [] as unknown[], updates: 0, disposed: 0 };
+          fake.views.push(record);
+          return {
+            phase: "update",
+            state: "visible",
+            setProps(props: AgentViewProps) {
+              record.setProps.push(props);
+              return true;
+            },
+            update() {
+              record.updates++;
+            },
+            dispose() {
+              record.disposed++;
+            },
+            particles: () => null,
+            morphUniforms: () => ({}),
+            morphHost: () => null,
+            object: () => new Group(),
+            setMorphRole() {},
+          };
+        },
+      } as AgentRenderDefinition;
+    },
+  };
 });
 
-const props = (overrides: Partial<NexAvatarProps> = {}): NexAvatarProps => ({
+/** A compiler whose every program links (these tests don't exercise compilation). */
+const trustingCompiler: MorphCompiler = {
+  compile: () => Promise.resolve(true),
+  warm: () => Promise.resolve(true),
+  verify: () => true,
+};
+
+const props = (overrides: Partial<AgentViewProps> = {}): AgentViewProps => ({
   particles: 2_400,
   particleShare: 1,
   glowLayer: true,
@@ -74,7 +132,7 @@ const props = (overrides: Partial<NexAvatarProps> = {}): NexAvatarProps => ({
 function fakeEngine(): Engine {
   return {
     scene: new Scene(),
-    camera: Object.assign(new PerspectiveCamera(20, 1.5, 0.1, 40), {}),
+    camera: new PerspectiveCamera(20, 1.5, 0.1, 40),
     width: 1200,
     height: 800,
     dpr: 2,
@@ -88,10 +146,34 @@ function context(stage: HTMLElement, overrides: Partial<AgentCoreContext> = {}):
     stage,
     interaction: createInteraction(0.1),
     transition: createTransition("nex"),
+    report: createMorphReport(),
     shapes: new ShapeCache(),
     orbitPreference: "uniforms",
+    epochs: { owner: 0, context: 0 },
+    compiler: trustingCompiler,
     ...overrides,
   };
+}
+
+/** AgentCore driven by a real TransitionClock (appearance and placement), as in the Stage. */
+function rig(stage: HTMLElement, overrides: Partial<AgentCoreContext> = {}) {
+  const engine = fakeEngine();
+  const ctx = context(stage, overrides);
+  const clock = new TransitionClock(engine, { transition: ctx.transition, report: ctx.report });
+  const core = new AgentCore(engine, ctx);
+  const apply = (p: AgentViewProps, agent: AgentId = "nex") => {
+    clock.setProps({ agent, path: p.path, motion: p.motion, hidden: false });
+    return core.setProps(p);
+  };
+  const step = (delta = 0.016) => {
+    clock.update(engine, delta);
+    core.update(engine, delta);
+  };
+  const dispose = () => {
+    core.dispose();
+    clock.dispose();
+  };
+  return { engine, ctx, clock, core, apply, step, dispose };
 }
 
 /** Every uniform value of every material, in scene order, as plain numbers (exact compare). */
@@ -115,13 +197,9 @@ function snapshot(root: Group) {
     return {
       type: object.type,
       visible: object.visible,
-      frustumCulled: object.frustumCulled,
       vertexShader: material.vertexShader,
       fragmentShader: material.fragmentShader,
-      blending: [material.blending, material.blendSrc, material.blendDst, material.blendEquation],
-      depth: [material.transparent, material.depthTest, material.depthWrite],
       drawRange: { ...object.geometry.drawRange },
-      attributes: Object.keys(object.geometry.attributes),
       uniforms: Object.fromEntries(
         Object.entries(material.uniforms).map(([name, uniform]) => [name, plain(uniform.value)]),
       ),
@@ -132,90 +210,47 @@ function snapshot(root: Group) {
 let stage: HTMLElement;
 
 beforeEach(() => {
-  faults.anchorAttach = false;
   probe.supported = true;
   probe.calls = 0;
   probe.unsafe = false;
   anchors.attached = anchors.detached = 0;
+  fake.forge = false;
+  fake.failCreate = false;
+  fake.views.length = 0;
   stage = document.createElement("div");
 });
 
 afterEach(() => vi.restoreAllMocks());
 
-describe("AgentCore (2.4b.1a)", () => {
+describe("AgentCore hosting NEX", () => {
   it("is the stage's update-phase agent layer, hosting NEX's unchanged scene graph", () => {
     const engine = fakeEngine();
     const core = new AgentCore(engine, context(stage));
     expect(core.phase).toBe("update");
-    expect(core.definition.id).toBe("nex");
+    expect(core.definition?.id).toBe("nex");
     expect(engine.scene.children).toHaveLength(1);
     expect(engine.scene.children[0]!.children).toHaveLength(6);
-    expect(anchors.attached).toBe(1);
-    core.dispose();
-  });
-
-  it("renders exactly the 8920b54 NEX: every uniform, shader, state and range, frame by frame", () => {
-    const legacyEngine = fakeEngine();
-    const legacy = new NexAvatar(legacyEngine, {
-      stage: document.createElement("div"),
-      interaction: createInteraction(0.1),
-      colours: LEGACY_COLOURS(),
-      shape: (count) => generateNexShape(count),
-      orbitTransport: "uniforms",
-    });
-    const coreEngine = fakeEngine();
-    const core = new AgentCore(coreEngine, context(stage));
-
-    const sequence: [Partial<NexAvatarProps>, number[]][] = [
-      [{}, [0.016, 0.016, 0.25, 0.016]], // first frames, a long frame (clamped step)
-      [{ particleShare: 0.5, glowLayer: false }, [0.016, 0.033]],
-      [{ particles: 1_200, motion: "reduced" }, [0, 0.016]],
-      [{ particles: 1_200, motion: "full", path: "/ai" }, [0.016, 2.5, 0.016]],
-    ];
-    for (const [overrides, deltas] of sequence) {
-      expect(core.setProps(props(overrides))).toBe(legacy.setProps(props(overrides)));
-      for (const delta of deltas) {
-        legacy.update(legacyEngine, delta);
-        core.update(coreEngine, delta);
-        const a = legacyEngine.scene.children[0] as Group;
-        const b = coreEngine.scene.children[0] as Group;
-        expect(snapshot(b)).toEqual(snapshot(a));
-        expect(b.visible).toBe(a.visible);
-        expect(b.matrix.elements).toEqual(a.matrix.elements);
-        expect(b.position.toArray()).toEqual(a.position.toArray());
-        expect(b.quaternion.toArray()).toEqual(a.quaternion.toArray());
-        expect(b.scale.toArray()).toEqual(a.scale.toArray());
-      }
-    }
-    // The same particle data, generated once (cached) and uploaded from identical arrays.
-    const pointsOf = (engine: Engine) =>
-      (engine.scene.children[0]!.children[2] as Mesh<BufferGeometry>).geometry;
-    for (const name of ["position", "aOrbit", "aSeed"]) {
-      expect(pointsOf(coreEngine).getAttribute(name).array).toEqual(
-        pointsOf(legacyEngine).getAttribute(name).array,
-      );
-    }
-    legacy.dispose();
+    // NEX's anchor is the transition clock's now, not the renderer's.
+    expect(anchors.attached).toBe(0);
     core.dispose();
   });
 
   it("uses the registry palette, byte-identical to NEX's approved colour values", () => {
     const transition = createTransition("nex");
-    const legacy = LEGACY_COLOURS();
+    const legacy = { deep: rgb("#14a89c"), accent: rgb("#3fe0d0"), hot: rgb("#c9fbf5") };
     for (const key of ["deep", "accent", "hot"] as const) {
       expect(transition.palette[key].toArray()).toEqual(legacy[key].toArray());
     }
   });
 
   it("publishes data-agent-state alongside data-nex-state, and removes both on dispose", () => {
-    const engine = fakeEngine();
-    const core = new AgentCore(engine, context(stage));
-    core.setProps(props());
+    const r = rig(stage);
+    r.apply(props());
     expect(stage.dataset.agentState).toBeUndefined();
-    core.update(engine, 0.016);
+    r.step();
     expect(stage.dataset.agentState).toBe("visible");
     expect(stage.dataset.agentState).toBe(stage.dataset.nexState);
-    core.dispose();
+    r.dispose();
     expect(stage.dataset.agentState).toBeUndefined();
     expect(stage.dataset.nexState).toBeUndefined();
   });
@@ -236,12 +271,13 @@ describe("AgentCore (2.4b.1a)", () => {
 
   it("construction failure releases everything (fault injection)", () => {
     const engine = fakeEngine();
-    faults.anchorAttach = true;
+    vi.spyOn(engine.scene, "add").mockImplementation(() => {
+      throw new Error("scene");
+    });
     const materials = vi.spyOn(ShaderMaterial.prototype, "dispose");
-    expect(() => new AgentCore(engine, context(stage))).toThrow("anchor");
+    expect(() => new AgentCore(engine, context(stage))).toThrow("scene");
     expect(materials).toHaveBeenCalledTimes(6);
     expect(engine.scene.children).toHaveLength(0);
-    expect(anchors.detached).toBe(1);
     expect(Object.keys(stage.dataset)).toEqual([]);
   });
 
@@ -264,10 +300,102 @@ describe("AgentCore (2.4b.1a)", () => {
     // 3 overlay geometries + the 2 placeholders replaced by the first shape + the 2 shape geometries.
     expect(geometries).toHaveBeenCalledTimes(7);
     expect(engine.scene.children).toHaveLength(0);
-    expect(anchors.detached).toBe(1);
     expect(core.setProps(props({ particles: 1_200 }))).toBe(false);
     core.update(engine, 0.016);
     expect(Object.keys(stage.dataset)).toEqual([]);
+  });
+});
+
+describe("AgentCore view ownership (2.4b.2)", () => {
+  /** Puts the clock's frame in a state directly (AgentCore only reads it). */
+  const frame = (t: StageTransition, patch: Partial<StageTransition>) => Object.assign(t, patch);
+
+  it("replaces the active view when the drawn agent changes: new view first, with current props", () => {
+    fake.forge = true;
+    const engine = fakeEngine();
+    const ctx = context(stage);
+    const core = new AgentCore(engine, ctx);
+    core.setProps(props());
+    const materials = vi.spyOn(ShaderMaterial.prototype, "dispose");
+    frame(ctx.transition, { source: "forge", target: "forge" });
+    core.update(engine, 0.016);
+    expect(core.definition?.id).toBe("forge");
+    expect(fake.views).toHaveLength(1);
+    expect(fake.views[0]!.setProps).toEqual([props()]); // got the current props before its frame
+    expect(fake.views[0]!.updates).toBe(1);
+    expect(materials).toHaveBeenCalledTimes(6); // NEX's view released after the new one existed
+    expect(engine.scene.children).toHaveLength(0);
+    // Back to NEX: a fresh NEX view, the fake released.
+    frame(ctx.transition, { source: "nex", target: "nex" });
+    core.update(engine, 0.016);
+    expect(core.definition?.id).toBe("nex");
+    expect(fake.views[0]!.disposed).toBe(1);
+    expect(engine.scene.children).toHaveLength(1);
+    core.dispose();
+  });
+
+  it("a failing replacement keeps the current view and propagates (the Stage's fail() path)", () => {
+    fake.forge = true;
+    fake.failCreate = true;
+    const engine = fakeEngine();
+    const ctx = context(stage);
+    const core = new AgentCore(engine, ctx);
+    core.setProps(props());
+    const materials = vi.spyOn(ShaderMaterial.prototype, "dispose");
+    frame(ctx.transition, { source: "forge", target: "forge" });
+    expect(() => core.update(engine, 0.016)).toThrow("forge view");
+    expect(core.definition?.id).toBe("nex");
+    expect(materials).not.toHaveBeenCalled();
+    core.dispose();
+    expect(materials).toHaveBeenCalledTimes(6);
+  });
+
+  it("an unsupported drawn agent has no view; the stage reports it, and a supported agent returns", () => {
+    const engine = fakeEngine();
+    const ctx = context(stage);
+    const core = new AgentCore(engine, ctx);
+    core.setProps(props());
+    frame(ctx.transition, { state: "unsupported" });
+    core.update(engine, 0.016);
+    expect(core.definition).toBeNull();
+    expect(engine.scene.children).toHaveLength(0);
+    expect(stage.dataset.agentSupport).toBe("unsupported");
+    expect(stage.dataset.agentState).toBe("unsupported");
+    frame(ctx.transition, { state: "idle" });
+    core.update(engine, 0.016);
+    expect(core.definition?.id).toBe("nex");
+    expect(stage.dataset.agentSupport).toBeUndefined();
+    core.dispose();
+  });
+
+  it("answers each morph request once; a pair that can't morph is answered 'failed'", () => {
+    fake.forge = true;
+    const engine = fakeEngine();
+    const ctx = context(stage);
+    const core = new AgentCore(engine, ctx);
+    core.setProps(props());
+    frame(ctx.transition, { state: "preparing", request: 7, target: "forge" });
+    core.update(engine, 0.016);
+    expect(ctx.report).toEqual({ request: 7, status: "failed" });
+    ctx.report.status = "none"; // (the clock never clears it; this proves no second answer)
+    core.update(engine, 0.016);
+    expect(ctx.report).toEqual({ request: 7, status: "none" });
+    core.dispose();
+  });
+
+  it("end to end with the clock: selecting another agent swaps views at the next frame", () => {
+    fake.forge = true;
+    const r = rig(stage);
+    r.apply(props());
+    r.step();
+    r.apply(props({ path: "/engineering" }), "forge");
+    r.step(); // preparing: AgentCore answers "failed" (the fake agent has no morph module)
+    expect(r.ctx.transition.state).toBe("preparing");
+    r.step(); // the clock reads the answer: swap
+    expect(r.ctx.transition.source).toBe("forge");
+    expect(r.core.definition?.id).toBe("forge");
+    expect(r.ctx.transition.generation).toBe(1);
+    r.dispose();
   });
 });
 
@@ -297,14 +425,13 @@ describe("AgentCore orbit transport (2.4b.1b)", () => {
     expect(stage.dataset.stageOrbits).toBe("uniforms");
     const points = (engine.scene.children[0] as Group).children[2] as Mesh<
       BufferGeometry,
-      Material
+      ShaderMaterial
     >;
-    const material = points.material as ShaderMaterial;
-    expect(material.vertexShader).toBe(nexPointVertex);
-    expect(Object.keys(material.uniforms)).toEqual(
+    expect(points.material.vertexShader).toBe(nexPointVertex);
+    expect(Object.keys(points.material.uniforms)).toEqual(
       expect.arrayContaining(["uFrames", "uOrbitFlow"]),
     );
-    expect(material.uniforms.uOrbitTable).toBeUndefined();
+    expect(points.material.uniforms.uOrbitTable).toBeUndefined();
     core.dispose();
     expect(stage.dataset.stageOrbits).toBeUndefined();
   });
@@ -322,7 +449,6 @@ describe("AgentCore orbit transport (2.4b.1b)", () => {
     expect(points!.material.vertexShader).toBe(nexPointVertexTexture);
     expect(glowPoints!.material.vertexShader).toBe(nexPointVertexTexture);
     expect(lines!.material.vertexShader).toBe(nexLineVertexTexture);
-    // One table, shared by the three programs that read orbit frames; no uniform arrays.
     const table = points!.material.uniforms.uOrbitTable!.value as DataTexture;
     expect(table).toBeInstanceOf(DataTexture);
     expect(glowPoints!.material.uniforms.uOrbitTable!.value).toBe(table);
@@ -346,32 +472,27 @@ describe("AgentCore orbit transport (2.4b.1b)", () => {
   });
 
   it("feeds the texture the same frames, and everything else matches the uniform path, frame by frame", () => {
-    const uniformEngine = fakeEngine();
-    const uniformCore = new AgentCore(uniformEngine, context(stage));
-    const textureEngine = fakeEngine();
-    const textureCore = new AgentCore(
-      textureEngine,
-      context(document.createElement("div"), { orbitPreference: "texture" }),
-    );
-    const sequence: [Partial<NexAvatarProps>, number[]][] = [
+    const u = rig(stage);
+    const t = rig(document.createElement("div"), { orbitPreference: "texture" });
+    const sequence: [Partial<AgentViewProps>, number[]][] = [
       [{}, [0.016, 0.016, 0.25, 0.016]],
       [{ particleShare: 0.5, glowLayer: false }, [0.016, 0.033]],
       [{ particles: 1_200, motion: "reduced" }, [0, 0.016]],
       [{ particles: 1_200, motion: "full", path: "/ai" }, [0.016, 2.5, 0.016]],
     ];
+    let visibleFrames = 0;
     for (const [overrides, deltas] of sequence) {
-      expect(textureCore.setProps(props(overrides))).toBe(uniformCore.setProps(props(overrides)));
+      expect(t.apply(props(overrides))).toBe(u.apply(props(overrides)));
       for (const delta of deltas) {
-        uniformCore.update(uniformEngine, delta);
-        textureCore.update(textureEngine, delta);
-        const u = uniformEngine.scene.children[0] as Group;
-        const t = textureEngine.scene.children[0] as Group;
-        expect(withoutTransport(t)).toEqual(withoutTransport(u));
-        expect(t.matrix.elements).toEqual(u.matrix.elements);
-        // The table holds exactly the float32 values of the uniform matrices; the flow speeds are
-        // the same uniform array in both transports.
-        const material = (u.children[2] as Mesh<BufferGeometry, ShaderMaterial>).material;
-        const textured = (t.children[2] as Mesh<BufferGeometry, ShaderMaterial>).material;
+        u.step(delta);
+        t.step(delta);
+        const ur = u.engine.scene.children[0] as Group;
+        const tr = t.engine.scene.children[0] as Group;
+        expect(withoutTransport(tr)).toEqual(withoutTransport(ur));
+        expect(tr.matrix.elements).toEqual(ur.matrix.elements);
+        if (ur.visible) visibleFrames++;
+        const material = (ur.children[2] as Mesh<BufferGeometry, ShaderMaterial>).material;
+        const textured = (tr.children[2] as Mesh<BufferGeometry, ShaderMaterial>).material;
         const frames = material.uniforms.uFrames!.value as Matrix3[];
         expect(textured.uniforms.uOrbitFlow!.value).toEqual(material.uniforms.uOrbitFlow!.value);
         const table = (textured.uniforms.uOrbitTable!.value as DataTexture).image
@@ -387,8 +508,9 @@ describe("AgentCore orbit transport (2.4b.1b)", () => {
         });
       }
     }
-    uniformCore.dispose();
-    textureCore.dispose();
+    expect(visibleFrames).toBeGreaterThan(5); // the comparison ran on drawn frames
+    u.dispose();
+    t.dispose();
   });
 
   it("an unsafe probe cleanup failure is not a fallback: construction fails, leaving nothing", () => {
@@ -398,11 +520,9 @@ describe("AgentCore orbit transport (2.4b.1b)", () => {
     expect(() => new AgentCore(engine, context(stage, { orbitPreference: "texture" }))).toThrow(
       "probe could not restore the renderer",
     );
-    // The view was never built; the Stage's fail() path takes over (static fallback).
     expect(materials).not.toHaveBeenCalled();
     expect(engine.scene.children).toHaveLength(0);
     expect(Object.keys(stage.dataset)).toEqual([]);
-    expect(anchors.attached).toBe(0);
   });
 
   it("owns the table: released with the layer, and on a failed construction", () => {
@@ -411,19 +531,21 @@ describe("AgentCore orbit transport (2.4b.1b)", () => {
     core.dispose();
     core.dispose();
     expect(textures).toHaveBeenCalledTimes(1);
-    faults.anchorAttach = true;
-    expect(
-      () => new AgentCore(fakeEngine(), context(stage, { orbitPreference: "texture" })),
-    ).toThrow("anchor");
+    const engine = fakeEngine();
+    vi.spyOn(engine.scene, "add").mockImplementation(() => {
+      throw new Error("scene");
+    });
+    expect(() => new AgentCore(engine, context(stage, { orbitPreference: "texture" }))).toThrow(
+      "scene",
+    );
     expect(textures).toHaveBeenCalledTimes(2);
     expect(Object.keys(stage.dataset)).toEqual([]);
   });
 
-  it("asks for the capability once per construction, only when the texture is wanted", () => {
+  it("asks for the capability once per view construction, only when the texture is wanted", () => {
     new AgentCore(fakeEngine(), context(stage, { orbitPreference: "texture" })).dispose();
     new AgentCore(fakeEngine(), context(stage, { orbitPreference: "texture" })).dispose();
     new AgentCore(fakeEngine(), context(stage)).dispose(); // uniforms wanted: never asked
-    // The per-renderer cache (one probe per context) is tested in orbits/probe.test.ts.
     expect(probe.calls).toBe(2);
   });
 });

@@ -17,19 +17,18 @@ import {
   type Object3D,
 } from "three";
 import type { EffectiveMotion } from "~/motion/policy";
-import type { AgentView, AgentViewContext } from "../agents/types";
+import type { AgentView, AgentViewContext, MorphRole, OrbitTransport } from "../agents/types";
+import { encodedPresence } from "../core/morph/light";
+import type { ParticleAttributes } from "../core/morphSlot";
 import { particleFragmentShader } from "../ambient/shaders";
 import { OrbitTexture } from "../core/orbits/texture";
 import { createShapeSlot } from "../core/slots";
 import type { Engine } from "../engine/Engine";
 import { Resources } from "../engine/resources";
 import { interactionUniforms, syncInteraction } from "../flow/interaction";
-import { MAX_STEP_SECONDS } from "../flow/policy";
 import { drawCount } from "../performance/quality";
-import { AnchorTracker } from "./anchor";
 import { NexMotion } from "./motion";
 import { NEX_PARAMS } from "./params";
-import { placeNex, type Placement } from "./placement";
 import {
   nexAtmosphereFragment,
   nexBillboardVertex,
@@ -50,7 +49,7 @@ export const NEX_ANCHOR = '[data-stage-anchor="nex"]';
 /** Approved pacing: 0.7 × the reference timing. */
 export const NEX_PACE = 0.7;
 export const ARRIVAL_SECONDS = 2.4;
-const FADE_SECONDS = 0.6;
+export const FADE_SECONDS = 0.6;
 
 /** Discrete inputs, forwarded by the Stage on change (ADR-007). */
 export interface NexAvatarProps {
@@ -117,11 +116,12 @@ type Published = "nexState" | "nexFlow" | "nexFormed";
  * system plus light overlays (ring hairlines, core glow, shell, atmosphere), in the persistent
  * stage alongside the ambient field.
  *
- * An `update`-phase engine layer (Milestone 2.4a; no React). The scene graph, materials, uniforms
- * and per-frame logic are unchanged from Milestone 2.3; time, placement, arrival, fade and pointer
- * live in fields and uniforms (ADR-007). It reads the shared interaction written by the flow
- * simulation earlier in the same frame. NEX follows a layout-only DOM anchor: on routes without
- * one it fades out and stops drawing.
+ * NEX's renderer, hosted by AgentCore (Milestones 2.4a, 2.4b). The scene graph, materials, uniforms
+ * and per-frame visual logic are unchanged from Milestone 2.3. Since 2.4b.2 its appearance (anchor,
+ * fade, arrival, post-arrival fade, idle time) and placement come from `TransitionClock`, the
+ * stage's single transition timeline, which computes them with NEX's original arithmetic earlier in
+ * the same frame (ADR-007). It reads the shared interaction written by the flow simulation. On
+ * routes without NEX's layout-only DOM anchor it fades out and stops drawing.
  *
  * Motion: full = arrival from drifting particles, living idle and cursor response; reduced = the
  * fully formed NEX as a still frame (rendered on demand), no pointer and no arrival.
@@ -147,21 +147,16 @@ export class NexAvatar implements AgentView {
   private readonly glowPoints: Points;
   /** The orbit-texture transport's table (null with the approved uniform transport). */
   private readonly orbitTexture: OrbitTexture | null;
-  private readonly anchor: AnchorTracker;
   private props: NexAvatarProps | null = null;
   private disposed = false;
-
-  // Live state, per frame (ADR-007).
-  private time = 0;
-  private fade = 0;
-  private arrival = 0;
-  private shown = false;
-  /** Inputs of the cached placement: anchor version, viewport and field of view. */
-  private version = -1;
-  private width = 0;
-  private height = 0;
-  private fov = 0;
-  private readonly placement: Placement = { x: 0, y: 0, scale: 0, onScreen: false };
+  /** Its part in a morph (Milestone 2.4b.2); `none` is NEX's own, unchanged rendering. */
+  private role: MorphRole = "none";
+  /** NEX's fade as its morph module reads it (unscaled by presence). */
+  private readonly morphFade: IUniform<number> = { value: 0 };
+  /** A table kept only for a texture-transport morph from the uniform transport. */
+  private extraTable: OrbitTexture | null = null;
+  private presence = 1;
+  private formedOverride = false;
   private readonly published: Record<Published, string> = {
     nexState: "",
     nexFlow: "",
@@ -281,13 +276,6 @@ export class NexAvatar implements AgentView {
       this.root.visible = false;
       own.defer(() => engine.scene.remove(this.root));
       engine.scene.add(this.root);
-
-      // The anchor's box is measured only after layout can have changed (scroll, resize, observed
-      // size changes, fonts, navigation), never on every frame; each change requests a frame
-      // through the engine's single invalidation path (needed when rendering on demand).
-      this.anchor = new AnchorTracker(window, engine.invalidate);
-      own.defer(() => this.anchor.detach());
-      this.anchor.attach();
     } catch (error) {
       this.disposed = true;
       throw own.rollback(error);
@@ -333,11 +321,8 @@ export class NexAvatar implements AgentView {
       changed = true;
     }
 
-    // The anchor is looked up after each navigation (the route's DOM has committed by then).
-    if (!prev || prev.path !== next.path) {
-      this.anchor.setElement(document.querySelector(NEX_ANCHOR));
-      changed = true;
-    }
+    // A navigation can move or remove NEX's anchor (TransitionClock looks it up again).
+    if (!prev || prev.path !== next.path) changed = true;
     if (prev?.motion !== next.motion) changed = true;
     this.props = next;
     return changed;
@@ -348,67 +333,100 @@ export class NexAvatar implements AgentView {
     return this.published.nexState;
   }
 
+  /**
+   * The uniforms NEX's slot-A morph module reads for `transport`: the same objects its own point
+   * programs use (so its per-frame writes reach the morph), except `uFade`, which in a morph is
+   * NEX's own fade, never scaled by its presence (only the overlays are). A transport other than
+   * NEX's idle one gets the same frames: the matrix array, or a table this view then keeps written.
+   */
+  morphUniforms(transport: OrbitTransport): Record<string, IUniform> {
+    const uniforms: Record<string, IUniform> = {
+      ...this.pointsUniforms,
+      uFade: this.morphFade,
+      uGlowLayer: { value: 0 },
+      uGlowFade: { value: 0 },
+    };
+    delete uniforms.uFrames;
+    delete uniforms.uOrbitTable;
+    if (transport === "uniforms") uniforms.uFrames = { value: this.frames.frames };
+    else uniforms.uOrbitTable = { value: this.morphTable().texture };
+    return uniforms;
+  }
+
+  /** The orbit table for a texture-transport morph: NEX's own, or one made for the morph. */
+  private morphTable(): OrbitTexture {
+    if (this.orbitTexture) return this.orbitTexture;
+    if (!this.extraTable) {
+      this.extraTable = this.resources.own(new OrbitTexture(NEX_FRAMES));
+      this.extraTable.write(this.frames.frames);
+    }
+    return this.extraTable;
+  }
+
+  /** NEX's group: its morph module's `modelViewMatrix` is this group's. */
+  morphHost(): Object3D {
+    return this.root;
+  }
+
+  /** NEX's scene object (its programs are compiled ahead of a morph that ends on NEX). */
+  object(): Object3D {
+    return this.root;
+  }
+
+  setMorphRole(role: MorphRole, presence: number, formed: boolean): void {
+    this.presence = presence;
+    this.formedOverride = formed;
+    if (role === this.role) return;
+    this.role = role;
+    // In a morph NEX's particles are drawn by the morph program; its glow layer (tier 3) stays,
+    // faded with its presence, so the first and last morph frames match its idle frames. Its own
+    // point layer stays in the scene with its material hidden: Three.js still registers (and owns)
+    // its geometry, so the buffers the morph uploads are released with this view, never orphaned.
+    this.materials.points.visible = role !== "morph";
+  }
+
+  /** NEX's particle attributes (its own GPU buffers), for a morph geometry to borrow. */
+  particles(): ParticleAttributes | null {
+    if (!this.props) return null;
+    const g = this.points.geometry;
+    return {
+      position: g.getAttribute("position") as BufferAttribute,
+      orbit: g.getAttribute("aOrbit") as BufferAttribute,
+      seed: g.getAttribute("aSeed") as BufferAttribute,
+    };
+  }
+
   private publish(key: Published, value: string): void {
     if (this.published[key] === value) return;
     this.published[key] = value;
     this.context.stage.dataset[key] = value;
   }
 
-  update(engine: Engine, delta: number): void {
-    const props = this.props;
-    if (!props) return;
+  update(engine: Engine): void {
+    if (!this.props) return;
     const root = this.root;
-    const dt = Math.min(delta, MAX_STEP_SECONDS);
-    const full = props.motion === "full";
-    const box = this.anchor.read();
-    const present = box.present;
-
-    // Appear / disappear with the anchor; the arrival replays each time NEX appears. Without full
-    // motion NEX is always fully formed (also when motion is reduced during an arrival).
-    this.fade = full
-      ? Math.min(1, Math.max(0, this.fade + (present ? dt : -dt) / FADE_SECONDS))
-      : present
-        ? 1
-        : 0;
-    if (present && !this.shown) {
-      this.shown = true;
-      this.arrival = 0;
+    // Built for a morph that hasn't started: not drawn yet.
+    if (this.role === "hidden") {
+      root.visible = false;
+      return;
     }
-    if (!full) this.arrival = ARRIVAL_SECONDS;
-    if (!present && this.fade === 0) this.shown = false;
-    if (this.fade === 0) {
+    // Appearance and placement, computed earlier in this frame by TransitionClock.
+    const { fade, arrival, formed, time } = this.context.visibility;
+    if (fade === 0) {
       root.visible = false;
       this.publish("nexState", "hidden");
       return;
     }
-
-    // Placement is recomputed only when the anchor box, viewport or field of view changed.
     const camera = engine.camera;
-    if (
-      present &&
-      (this.anchor.version !== this.version ||
-        engine.width !== this.width ||
-        engine.height !== this.height ||
-        camera.fov !== this.fov)
-    ) {
-      placeNex(box, engine, camera.fov, this.placement);
-      this.version = this.anchor.version;
-      this.width = engine.width;
-      this.height = engine.height;
-      this.fov = camera.fov;
-    }
-    const { x, y, scale, onScreen } = this.placement;
+    const { x, y, scale, onScreen } = this.context.placement.displayed;
     root.visible = onScreen;
     this.publish("nexState", "visible");
     if (!onScreen) return;
 
-    if (full) {
-      this.time += dt * NEX_PACE;
-      this.arrival = Math.min(ARRIVAL_SECONDS, this.arrival + dt);
-    }
-    this.publish("nexFormed", this.arrival >= ARRIVAL_SECONDS ? "true" : "false");
-    this.frames.update(this.time);
+    this.publish("nexFormed", arrival >= ARRIVAL_SECONDS || this.formedOverride ? "true" : "false");
+    this.frames.update(time);
     this.orbitTexture?.write(this.frames.frames);
+    this.extraTable?.write(this.frames.frames);
 
     // Place, scale and turn NEX so its three-quarter view faces the camera from its anchor.
     root.position.set(x, y, 0);
@@ -418,18 +436,22 @@ export class NexAvatar implements AgentView {
 
     const u = this.common;
     const m = this.materials;
-    u.uTime!.value = this.time;
-    u.uArrive!.value = this.arrival / ARRIVAL_SECONDS;
-    u.uFade!.value = this.fade;
+    u.uTime!.value = time;
+    u.uArrive!.value = arrival / ARRIVAL_SECONDS;
+    u.uFade!.value = fade;
     u.uScale!.value = scale;
     u.uBreath!.value = this.frames.breath;
-    // The glow layer fades in once the arrival is complete.
-    const glowFade = m.glowPoints.uniforms.uGlowFade!;
-    glowFade.value = full
-      ? this.arrival >= ARRIVAL_SECONDS
-        ? Math.min(1, (glowFade.value as number) + dt / FADE_SECONDS)
-        : 0
-      : 1;
+    // The glow layer fades in once the arrival is complete (TransitionClock's post-arrival fade).
+    m.glowPoints.uniforms.uGlowFade!.value = formed;
+    if (this.role === "morph") {
+      // NEX's own light in a morph (its halo, shell, glow billboards, ring lines and tier-3 glow
+      // layer) is scaled by one factor: its presence (the linear phase, in linear light), encoded
+      // once through the shared uFade. The particles' light is the morph program's. A destination
+      // is drawn fully formed.
+      this.morphFade.value = fade;
+      u.uFade!.value = fade * encodedPresence(this.presence);
+      if (this.formedOverride) u.uArrive!.value = 1;
+    }
     const glowIntensity = 0.9 + 0.2 * this.frames.breathPhase;
     m.glow.uniforms.uIntensity!.value = glowIntensity;
     m.atmosphere.uniforms.uIntensity!.value = glowIntensity;

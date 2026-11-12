@@ -400,3 +400,31 @@ export function withOrbitTexture(source: string): string {
 /** NEX's point and line vertex shaders for the orbit-texture transport (core/orbits/). */
 export const nexPointVertexTexture = withOrbitTexture(nexPointVertex);
 export const nexLineVertexTexture = withOrbitTexture(nexLineVertex);
+
+/**
+ * NEX's slot-A morph module (Milestone 2.4b.2): the approved point vertex shader for the given
+ * orbit transport, with `main()` turned into
+ * `particleA(out vec4 morphClip, out float morphSize, out vec3 morphColor, out float morphAlpha)`.
+ * Only the outputs change names (`gl_Position`, `gl_PointSize`, `vColor`, `vAlpha`) and the varying
+ * declarations move to the morph program; every expression and its order is the approved source,
+ * so a particle still at the start of its morph is computed exactly as NEX's idle program does.
+ * Throws if the source no longer has the expected shape.
+ */
+export function nexMorphModule(texture: boolean): string {
+  const source = texture ? nexPointVertexTexture : nexPointVertex;
+  const varyings = "varying vec3 vColor;\nvarying float vAlpha;\n";
+  const main = "void main() {";
+  if (source.split(varyings).length !== 2 || source.split(main).length !== 2) {
+    throw new Error("NEX point shader without the expected varyings or main()");
+  }
+  const [head, body] = source.replace(varyings, "").split(main) as [string, string];
+  if (/gl_Position|gl_PointSize|\bvColor\b|\bvAlpha\b/.test(head)) {
+    throw new Error("NEX point shader writes its outputs outside main()");
+  }
+  const renamed = body
+    .replaceAll("gl_Position", "morphClip")
+    .replaceAll("gl_PointSize", "morphSize")
+    .replace(/\bvColor\b/g, "morphColor")
+    .replace(/\bvAlpha\b/g, "morphAlpha");
+  return `${head}void particleA(out vec4 morphClip, out float morphSize, out vec3 morphColor, out float morphAlpha) {${renamed}`;
+}
