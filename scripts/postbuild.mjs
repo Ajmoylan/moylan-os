@@ -29,10 +29,10 @@ const CONFIG_LIMIT_BYTES = 20 * 1024;
 const BUDGET_INITIAL_JS_GZ = 125 * 1024; // per page, everything loaded before/at hydration
 const BUDGET_STAGE_JS_GZ = 250 * 1024; // lazy 3D chunk + its exclusive dependencies
 // Review target for the lazy 3D closure in the current phase: reported, never enforced (only the
-// two budgets above fail the build). Milestone 2.4b.1b, orbit-texture transport: ≤ 152 KB gz
-// (2.4b.1a measured 144.9 KB). Each phase re-bases it only in its own reviewed change.
-const TARGET_STAGE_PHASE = "2.4b.1b";
-const TARGET_STAGE_GZ = 152 * 1024;
+// two budgets above fail the build). Milestone 2.4b.2, the first GPU particle morph: ≤ 160 KB gz
+// (2.4b.1b measured 146.7 KB). Each phase re-bases it only in its own reviewed change.
+const TARGET_STAGE_PHASE = "2.4b.2";
+const TARGET_STAGE_GZ = 160 * 1024;
 
 const fail = (message) => {
   console.error(`\n✖ postbuild: ${message}\n`);

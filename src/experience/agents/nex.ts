@@ -1,4 +1,6 @@
-import { NexAvatar } from "../nex/NexAvatar";
+import { ARRIVAL_SECONDS, FADE_SECONDS, NEX_ANCHOR, NEX_PACE, NexAvatar } from "../nex/NexAvatar";
+import { placeNex } from "../nex/placement";
+import { nexMorphModule } from "../nex/shaders";
 import { generateNexShape, NEX_SEED } from "../nex/shape";
 import { NEX_HOT } from "./palette";
 import type { AgentRenderDefinition } from "./types";
@@ -18,5 +20,10 @@ export const nexDefinition: AgentRenderDefinition = {
   // speeds stay uniforms (Milestone 2.4b.1b).
   transports: { idle: ["uniforms", "texture"], uniformVectors: { uniforms: 112, texture: 49 } },
   hotOverride: NEX_HOT,
+  // The approved Milestone 2.3 values, applied by TransitionClock since 2.4b.2.
+  timing: { arrival: ARRIVAL_SECONDS, fade: FADE_SECONDS, pace: NEX_PACE },
+  placement: { kind: "anchor", selector: NEX_ANCHOR, place: placeNex },
+  // The host agent takes slot A of every pair morph program: its approved point shader as a module.
+  morph: { slot: "A", module: (transport) => nexMorphModule(transport === "texture") },
   createView: (engine, context) => new NexAvatar(engine, context),
 };

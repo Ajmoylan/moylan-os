@@ -4,36 +4,18 @@ import type * as ShapeModule from "./shape";
 import { nexPalette, rgb } from "../ambient/config";
 import type { Engine } from "../engine/Engine";
 import { createInteraction } from "../flow/interaction";
+import { createTransition } from "../transition/StageTransition";
 import { NexAvatar, type NexAvatarProps } from "./NexAvatar";
 import { generateNexShape } from "./shape";
 
 /**
- * NEX as an engine layer (Milestone 2.4a): change reporting, transactional construction and
- * geometry rebuilds, complete and idempotent disposal (fault injection with real Three.js objects).
- * The V3 look itself is covered by the shader/shape tests and the visual comparisons.
+ * NEX's renderer (Milestone 2.4a; hosted by AgentCore since 2.4b): change reporting, transactional
+ * construction and geometry rebuilds, complete and idempotent disposal (fault injection with real
+ * Three.js objects). Since 2.4b.2 its appearance and placement come from TransitionClock (tested in
+ * transition/TransitionClock.test.ts and, frame by frame against 2ceeff8, nex/appearance.test.ts).
  */
 
-const faults = vi.hoisted(() => ({ anchorAttach: false, shape: false }));
-const anchors = vi.hoisted(() => ({ attached: 0, detached: 0, elements: [] as unknown[] }));
-
-vi.mock("./anchor", () => ({
-  AnchorTracker: class {
-    version = 0;
-    attach() {
-      anchors.attached++;
-      if (faults.anchorAttach) throw new Error("anchor");
-    }
-    detach() {
-      anchors.detached++;
-    }
-    setElement(element: unknown) {
-      anchors.elements.push(element);
-    }
-    read() {
-      return { present: false, left: 0, top: 0, width: 0, height: 0 };
-    }
-  },
-}));
+const faults = vi.hoisted(() => ({ shape: false }));
 
 vi.mock("./shape", async (original) => {
   const actual = await original<typeof ShapeModule>();
@@ -76,13 +58,15 @@ const nex = () =>
     },
     shape: (count) => generateNexShape(count),
     orbitTransport: "uniforms",
+    visibility: transition.visibility,
+    placement: transition.placement,
   });
 
+let transition = createTransition("nex");
+
 beforeEach(() => {
-  faults.anchorAttach = false;
   faults.shape = false;
-  anchors.attached = anchors.detached = 0;
-  anchors.elements.length = 0;
+  transition = createTransition("nex");
   scene = new Scene();
   stage = document.createElement("div");
   engine = {
@@ -97,12 +81,32 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("NexAvatar layer", () => {
-  it("is an update-phase layer: one group in the scene, the anchor attached", () => {
+  it("is an update-phase layer: one group in the scene", () => {
     const n = nex();
     expect(n.phase).toBe("update");
     expect(scene.children).toHaveLength(1);
     expect(scene.children[0]!.children).toHaveLength(6); // atmosphere, lines, points ×2, shell, glow
-    expect(anchors.attached).toBe(1);
+  });
+
+  it("draws what the transition clock decided: hidden at fade 0, placed and visible on screen", () => {
+    const n = nex();
+    n.setProps(props());
+    const root = scene.children[0]!;
+    n.update(engine);
+    expect(root.visible).toBe(false);
+    expect(stage.dataset.nexState).toBe("hidden");
+    Object.assign(transition.visibility, { fade: 0.5, arrival: 1.2, formed: 0, time: 3 });
+    Object.assign(transition.placement.displayed, { x: 0.25, y: -0.5, scale: 0.8, onScreen: true });
+    n.update(engine);
+    expect(root.visible).toBe(true);
+    expect(root.position.toArray()).toEqual([0.25, -0.5, 0]);
+    expect(root.scale.x).toBe(0.8);
+    expect(stage.dataset.nexState).toBe("visible");
+    expect(stage.dataset.nexFormed).toBe("false");
+    transition.placement.displayed.onScreen = false;
+    n.update(engine);
+    expect(root.visible).toBe(false);
+    expect(stage.dataset.nexState).toBe("visible"); // fading, merely off screen
   });
 
   it("reports changes, applies only what changed, and never invalidates by itself", () => {
@@ -113,18 +117,19 @@ describe("NexAvatar layer", () => {
     expect(n.setProps(props({ particleShare: 0.5 }))).toBe(true);
     expect(stage.dataset.nexParticles).toBe("600");
     expect(n.setProps(props({ particleShare: 0.5, glowLayer: false }))).toBe(true);
+    // A navigation can move NEX's anchor (the transition clock looks it up again).
     expect(n.setProps(props({ particleShare: 0.5, glowLayer: false, path: "/ai" }))).toBe(true);
-    expect(anchors.elements).toHaveLength(2); // looked up again after the navigation
     expect(engine.invalidate).not.toHaveBeenCalled();
   });
 
   it("construction failure releases everything created before it (fault injection)", () => {
-    faults.anchorAttach = true;
-    expect(() => nex()).toThrow("anchor");
+    vi.spyOn(scene, "add").mockImplementation(() => {
+      throw new Error("scene");
+    });
+    expect(() => nex()).toThrow("scene");
     expect(materialDisposals).toHaveBeenCalledTimes(MATERIALS);
     expect(geometryDisposals).toHaveBeenCalledTimes(GEOMETRIES);
     expect(scene.children).toHaveLength(0);
-    expect(anchors.detached).toBe(1);
     expect(Object.keys(stage.dataset)).toEqual([]);
   });
 
@@ -146,7 +151,6 @@ describe("NexAvatar layer", () => {
     expect(materialDisposals).toHaveBeenCalledTimes(MATERIALS);
     expect(geometryDisposals).toHaveBeenCalledTimes(GEOMETRIES);
     expect(scene.children).toHaveLength(0);
-    expect(anchors.detached).toBe(1);
   });
 
   it("dispose is complete and idempotent, and removes NEX's stage attributes", () => {
@@ -158,7 +162,6 @@ describe("NexAvatar layer", () => {
     // + the two placeholder particle geometries replaced by the first real shape.
     expect(geometryDisposals).toHaveBeenCalledTimes(GEOMETRIES + 2);
     expect(scene.children).toHaveLength(0);
-    expect(anchors.detached).toBe(1);
     expect(stage.dataset.nexParticles).toBeUndefined();
     expect(n.setProps(props({ particles: 2_400 }))).toBe(false);
   });

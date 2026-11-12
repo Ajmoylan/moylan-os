@@ -1,4 +1,4 @@
-import type { AgentId } from "~/agents/registry";
+import type { StageAgent as AgentId } from "../agents/types";
 import type { AgentRenderDefinition, AgentShape } from "../agents/types";
 
 /** Shapes kept: the current agent, a destination and one prefetched (proposal §5.3). */
