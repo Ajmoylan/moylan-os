@@ -3,9 +3,13 @@
  * Generates NEX's introduction with Azure AI Speech (REST, no SDK, no dependency). Run by hand only
  * after Alex has approved it: it makes one billable request per sample.
  *
- * Usage (the key and region come from the environment, never from a file in the repository):
- *   AZURE_SPEECH_KEY=… AZURE_SPEECH_REGION=uksouth node scripts/voice/synthesise.mjs samples
- *   AZURE_SPEECH_KEY=… AZURE_SPEECH_REGION=uksouth node scripts/voice/synthesise.mjs final en-GB-RyanNeural [style]
+ * Usage (the key and region come from the environment, never from a file in the repository or the
+ * command line; enter the key at a hidden prompt so it stays out of shell history, see README.md):
+ *   read -rs AZURE_SPEECH_KEY && export AZURE_SPEECH_KEY
+ *   export AZURE_SPEECH_REGION=uksouth
+ *   node scripts/voice/synthesise.mjs samples
+ *   AZURE_SPEECH_TIER=S0 node scripts/voice/synthesise.mjs final en-GB-RyanNeural [style]
+ *   unset AZURE_SPEECH_KEY
  *
  * "samples" writes the shortlist to docs/references/voice-samples/ (Git-ignored; private
  * auditions, never published). "final" writes public/audio/nex-intro.mp3 (24 kHz, 48 kbit/s mono
@@ -43,7 +47,7 @@ const template = await readFile(join(here, "nex-intro.ssml.xml"), "utf8");
 async function synthesise(voice, style, out) {
   const ssml = buildSsml(template, voice, style);
   const bytes = await requestSpeech({ region, key, ssml });
-  await writeAudioAtomically(out, bytes, [samplesDir, publicAudioDir]);
+  await writeAudioAtomically(out, bytes, { root, dirs: [samplesDir, publicAudioDir] });
   console.log(`wrote ${out}`);
 }
 

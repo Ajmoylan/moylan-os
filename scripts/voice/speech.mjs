@@ -9,11 +9,12 @@
  *   voice and style are validated against Azure's naming and XML-escaped;
  * - the endpoint is built only from a validated region, over HTTPS, and redirects are refused, so the
  *   subscription key can only ever reach `<region>.tts.speech.microsoft.com`;
- * - a response is written only if it is an MP3 of a plausible size, and atomically, so a failed or
- *   unexpected response never leaves a partial or non-audio file in public/.
+ * - a response is read only up to 2 MB, written only if it is an MP3 of a plausible size, and
+ *   atomically, never through a linked folder, so a failed or unexpected response never leaves a
+ *   partial or non-audio file in public/ (or anywhere else).
  */
 import { randomUUID } from "node:crypto";
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 /** Azure region names: lower-case letters and digits, e.g. uksouth, westeurope, eastus2. */
@@ -39,7 +40,28 @@ function fill(text, placeholder, value) {
 }
 
 /**
- * The SSML document for a voice and optional speaking style. The template's notes (a comment before
+ * Where the document's root element starts. Only notes (complete comments) and whitespace may come
+ * before `<speak>`; each note is skipped whole, so text inside one (even "<speak>") is never taken
+ * for the root element. Anything else before it is refused.
+ */
+function rootStart(template) {
+  let i = 0;
+  for (;;) {
+    while (i < template.length && /\s/.test(template[i])) i++;
+    if (template.startsWith("<!--", i)) {
+      const end = template.indexOf("-->", i + 4);
+      if (end < 0) throw new Error("The SSML template has an unterminated note.");
+      i = end + 3;
+    } else if (/^<speak[\s>]/.test(template.slice(i, i + 7))) {
+      return i;
+    } else {
+      throw new Error("The SSML template has no <speak> element after its notes.");
+    }
+  }
+}
+
+/**
+ * The SSML document for a voice and optional speaking style. The template's notes (comments before
  * `<speak>`) are dropped by starting the document at its root element, not by pattern-matching
  * markup; a comment anywhere inside the document is refused rather than sanitised.
  */
@@ -50,10 +72,8 @@ export function buildSsml(template, voice, style = null) {
   if (style !== null && (typeof style !== "string" || !STYLE.test(style))) {
     throw new Error(`Not an Azure speaking style: ${JSON.stringify(style)}`);
   }
-  const start = template.indexOf("<speak");
-  if (start < 0) throw new Error("The SSML template has no <speak> element.");
-  const document = template.slice(start);
-  if (document.includes("<!--")) {
+  const document = template.slice(rootStart(template));
+  if (document.includes("<!--") || document.includes("-->")) {
     throw new Error("The SSML template may have notes only before <speak>, not inside it.");
   }
   const ssml = fill(
@@ -99,6 +119,34 @@ export function checkAudio(contentType, bytes) {
 }
 
 /**
+ * Reads a response body, stopping (and cancelling the transfer) as soon as it passes `limit` bytes,
+ * so an oversized or endless response never fills memory, whatever its headers say.
+ */
+export async function readCapped(response, limit = MAX_AUDIO_BYTES) {
+  if (!response.body) return new Uint8Array(0);
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel();
+      throw new Error(`Unexpected audio size: more than ${limit} bytes.`);
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
+/**
  * Requests one recording and returns its checked bytes. `request` is the fetch function (tests pass
  * a stub, so they never reach Azure). One billable request per call.
  */
@@ -119,25 +167,59 @@ export async function requestSpeech({ region, key, ssml, request = fetch }) {
   if (!response.ok) throw new Error(`Azure AI Speech returned HTTP ${response.status}.`);
   const declared = Number(response.headers.get("content-length"));
   if (declared > MAX_AUDIO_BYTES) throw new Error(`Unexpected audio size: ${declared} bytes.`);
-  const bytes = new Uint8Array(await response.arrayBuffer());
+  const bytes = await readCapped(response);
   checkAudio(response.headers.get("content-type"), bytes);
   return bytes;
 }
 
+/** Whether `path` is strictly inside `dir` (by its text: `..` and absolute escapes are refused). */
+function within(dir, path) {
+  const rel = relative(resolve(dir), resolve(path));
+  return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+}
+
 /**
- * Writes `bytes` to `out`, which must be inside one of `allowedDirs`: first to a new temporary file
- * beside it (created exclusively, so an existing file or link there is never written through), then
- * renamed over `out` in one step. On failure the temporary file is removed.
+ * Refuses a symbolic link at any folder between `root` and `dir` (inclusive): a linked
+ * `public/audio` (a link can be committed) would otherwise send the write somewhere else. Folders
+ * that don't exist yet are fine (they are created as real folders).
  */
-export async function writeAudioAtomically(out, bytes, allowedDirs) {
+async function refuseLinkedFolders(root, dir) {
+  const parts = relative(resolve(root), resolve(dir)).split(sep).filter(Boolean);
+  let path = resolve(root);
+  for (const part of parts) {
+    path = join(path, part);
+    let stat;
+    try {
+      stat = await lstat(path);
+    } catch (error) {
+      if (error.code === "ENOENT") return;
+      throw error;
+    }
+    if (stat.isSymbolicLink())
+      throw new Error(`Refusing to write audio through a linked folder: ${path}`);
+    if (!stat.isDirectory()) throw new Error(`Not a folder: ${path}`);
+  }
+}
+
+/**
+ * Writes `bytes` to `out`, which must be inside one of `dirs` (each inside `root`, the repository),
+ * with no linked folder on the way, checked by text, by each folder's type and, once the folder
+ * exists, by its real path. It is written first to a new temporary file beside it (created
+ * exclusively, so an existing file or link there is never written through), then renamed over `out`
+ * in one step. On failure the temporary file is removed.
+ */
+export async function writeAudioAtomically(out, bytes, { root, dirs }) {
   const target = resolve(out);
-  const inside = allowedDirs.some((dir) => {
-    const rel = relative(resolve(dir), target);
-    return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
-  });
-  if (!inside) throw new Error(`Refusing to write audio outside its directories: ${out}`);
+  if (!dirs.every((dir) => within(root, dir)) || !dirs.some((dir) => within(dir, target))) {
+    throw new Error(`Refusing to write audio outside its directories: ${out}`);
+  }
   const dir = dirname(target);
+  await refuseLinkedFolders(root, dir);
   await mkdir(dir, { recursive: true });
+  // The folder must resolve exactly where its path says (no link appeared on the way meanwhile).
+  if ((await realpath(dir)) !== join(await realpath(root), relative(resolve(root), dir))) {
+    throw new Error(`Refusing to write audio through a linked folder: ${dir}`);
+  }
   const temporary = join(dir, `.${basename(target)}.${randomUUID()}.tmp`);
   try {
     await writeFile(temporary, bytes, { flag: "wx", mode: 0o644 });

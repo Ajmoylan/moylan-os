@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   MAX_AUDIO_BYTES,
   buildSsml,
+  readCapped,
   checkAudio,
   escapeXml,
   requestSpeech,
@@ -49,16 +50,17 @@ describe("buildSsml: the document sent to Azure", () => {
     expect(wellFormed(styled)).toBe(true);
   });
 
-  it("drops any notes before <speak> whole, however they are written (no pattern sanitising)", () => {
-    // Inputs a single non-global comment replacement left partly in place.
-    for (const notes of ["<!--a--><!--b-->", "<!<!---->--", "<!-- x --> <!-- y -->", "<!--"]) {
-      const ssml = buildSsml(
-        `${notes}\n${template.slice(template.indexOf("<speak"))}`,
-        "en-GB-RyanNeural",
-      );
+  it("drops whole notes before <speak>, and refuses malformed ones (no pattern sanitising)", () => {
+    const root = template.slice(template.indexOf("<speak"));
+    // Several notes: a single non-global comment replacement left the second one in place.
+    for (const notes of ["<!--a--><!--b-->", "<!-- x --> <!-- y -->"]) {
+      const ssml = buildSsml(`${notes}\n${root}`, "en-GB-RyanNeural");
       expect(ssml.startsWith("<speak")).toBe(true);
       expect(ssml).not.toContain("<!");
     }
+    // Malformed notes are refused rather than partly stripped.
+    expect(() => buildSsml(`<!<!---->--\n${root}`, "en-GB-RyanNeural")).toThrow(/after its notes/);
+    expect(() => buildSsml(`<!--\n${root}`, "en-GB-RyanNeural")).toThrow(/unterminated/);
   });
 
   it("refuses a comment inside the document, or a missing, repeated or unknown placeholder", () => {
@@ -206,17 +208,19 @@ describe("writeAudioAtomically", () => {
   afterEach(async () => {
     await rm(dir, { recursive: true, force: true });
   });
+  /** The repository (`root`) and the one folder audio may be written to. */
+  const audioDirs = () => ({ root: dir, dirs: [join(dir, "audio")] });
 
   it("writes (and replaces) the file in one step, leaving no temporary file", async () => {
     const out = join(dir, "audio", "nex-intro.mp3");
-    await writeAudioAtomically(out, mp3(2048), [join(dir, "audio")]);
-    await writeAudioAtomically(out, id3(3072), [join(dir, "audio")]);
+    await writeAudioAtomically(out, mp3(2048), audioDirs());
+    await writeAudioAtomically(out, id3(3072), audioDirs());
     expect((await readFile(out)).length).toBe(3072);
     expect(await readdir(join(dir, "audio"))).toEqual(["nex-intro.mp3"]);
   });
 
   it("refuses paths outside its directories (including via ..)", async () => {
-    const allowed = [join(dir, "audio")];
+    const allowed = audioDirs();
     for (const out of [
       join(dir, "elsewhere.mp3"),
       join(dir, "audio", "..", "escape.mp3"),
@@ -234,7 +238,7 @@ describe("writeAudioAtomically", () => {
     await writeFile(victim, "keep me");
     const out = join(dir, "audio", "nex-intro.mp3");
     await symlink(victim, out);
-    await writeAudioAtomically(out, mp3(2048), [join(dir, "audio")]);
+    await writeAudioAtomically(out, mp3(2048), audioDirs());
     expect(await readFile(victim, "utf8")).toBe("keep me");
     expect((await lstat(out)).isSymbolicLink()).toBe(false);
   });
@@ -243,7 +247,160 @@ describe("writeAudioAtomically", () => {
     const out = join(dir, "audio", "nex-intro.mp3");
     await mkdir(out, { recursive: true }); // a directory where the file should go: rename fails
     await writeFile(join(out, "x"), "");
-    await expect(writeAudioAtomically(out, mp3(), [join(dir, "audio")])).rejects.toThrow();
+    await expect(writeAudioAtomically(out, mp3(), audioDirs())).rejects.toThrow();
     expect((await readdir(join(dir, "audio"))).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+  });
+});
+
+/*
+ * Regression tests for the independent review of commit 4e4d344 (four low-severity findings).
+ */
+
+describe("review finding 1: nothing before <speak> is ever sent", () => {
+  const root = template.slice(template.indexOf("<speak"));
+  /** The previous implementation, kept as the reference for the committed template's output. */
+  const previous = (t, voice, style) =>
+    t
+      .replace(/<!--[\s\S]*?-->\s*/, "")
+      .replace("{{VOICE}}", voice)
+      .replace("{{STYLE_OPEN}}", style ? `<mstts:express-as style="${style}">` : "")
+      .replace("{{STYLE_CLOSE}}", style ? "</mstts:express-as>" : "");
+
+  it("the committed template's SSML is byte-for-byte unchanged", () => {
+    for (const [voice, style] of [
+      ["en-GB-RyanNeural", null],
+      ["en-GB-RyanNeural", "chat"],
+      ["en-GB-ThomasNeural", null],
+    ]) {
+      expect(buildSsml(template, voice, style)).toBe(previous(template, voice, style));
+    }
+  });
+
+  it("a note that mentions <speak> is skipped whole (none of it is sent)", () => {
+    const notes = "<!--\n  <speak> is a private note: never send this.\n-->\n";
+    const ssml = buildSsml(`${notes}${root}`, "en-GB-RyanNeural");
+    expect(ssml.startsWith("<speak version=")).toBe(true);
+    expect(ssml).not.toContain("private note");
+    expect(ssml).not.toContain("-->");
+    // Several notes, each mentioning the root element, with whitespace between.
+    const many = `<!-- <speak> --> \n<!-- <speak version="x"> -->\n${root}`;
+    expect(buildSsml(many, "en-GB-RyanNeural")).toBe(buildSsml(template, "en-GB-RyanNeural"));
+  });
+
+  it("refuses anything but whole notes before <speak>, and a note's end inside the document", () => {
+    const voice = "en-GB-RyanNeural";
+    expect(() => buildSsml(`<!-- unterminated ${root}`, voice)).toThrow(/unterminated/);
+    expect(() => buildSsml(`stray text ${root}`, voice)).toThrow(/after its notes/);
+    expect(() => buildSsml(`<?xml version="1.0"?>${root}`, voice)).toThrow(/after its notes/);
+    expect(() => buildSsml(`<speaker/>${root}`, voice)).toThrow(/after its notes/);
+    expect(() => buildSsml(root.replace("<prosody", "--><prosody"), voice)).toThrow(/only before/);
+  });
+});
+
+describe("review finding 2: a response is never read past 2 MB", () => {
+  /** A body of `chunks` × 64 KB with no Content-Length, counting how much was actually produced. */
+  const endless = (chunks) => {
+    const counter = { pulled: 0, cancelled: false };
+    const stream = new ReadableStream({
+      pull(controller) {
+        if (counter.pulled >= chunks) return controller.close();
+        counter.pulled++;
+        const chunk = new Uint8Array(64 * 1024);
+        if (counter.pulled === 1) chunk.set([0xff, 0xfb, 0x90, 0x64]);
+        controller.enqueue(chunk);
+      },
+      cancel() {
+        counter.cancelled = true;
+      },
+    });
+    return { stream, counter };
+  };
+
+  it("stops and cancels the transfer as soon as the body passes the limit", async () => {
+    const { stream, counter } = endless(4800); // 300 MB if read to the end
+    await expect(readCapped(new Response(stream))).rejects.toThrow(/more than 2097152 bytes/);
+    expect(counter.cancelled).toBe(true);
+    expect(counter.pulled).toBeLessThanOrEqual(34); // 2 MB / 64 KB, plus the chunk that passed it
+  });
+
+  it("applies to requestSpeech without (or with a false) Content-Length", async () => {
+    for (const headers of [{}, { "content-length": "4096" }]) {
+      const { stream, counter } = endless(4800);
+      const response = new Response(stream, {
+        headers: { "content-type": "audio/mpeg", ...headers },
+      });
+      await expect(
+        requestSpeech({
+          region: "uksouth",
+          key: "k",
+          ssml: "<speak/>",
+          request: async () => response,
+        }),
+      ).rejects.toThrow(/size/);
+      expect(counter.pulled).toBeLessThanOrEqual(34);
+    }
+  });
+
+  it("reads a normal recording whole, across chunks", async () => {
+    const { stream } = endless(2); // 128 KB
+    const bytes = await readCapped(new Response(stream));
+    expect(bytes.length).toBe(128 * 1024);
+    expect(() => checkAudio("audio/mpeg", bytes)).not.toThrow();
+  });
+});
+
+describe("review finding 3: never written through a linked folder", () => {
+  let dir;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "nex-voice-links-"));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+  const repo = () => join(dir, "repo");
+  const allowed = () => ({ root: repo(), dirs: [join(repo(), "public", "audio")] });
+  const out = () => join(repo(), "public", "audio", "nex-intro.mp3");
+
+  it("refuses a linked public/audio (a link can be committed): nothing is written at its target", async () => {
+    await mkdir(join(repo(), "public"), { recursive: true });
+    await mkdir(join(dir, "elsewhere"));
+    await symlink(join(dir, "elsewhere"), join(repo(), "public", "audio"));
+    await expect(writeAudioAtomically(out(), mp3(), allowed())).rejects.toThrow(/linked folder/);
+    expect(await readdir(join(dir, "elsewhere"))).toEqual([]);
+  });
+
+  it("refuses a link higher up (public/) without creating anything at its target", async () => {
+    await mkdir(repo(), { recursive: true });
+    await mkdir(join(dir, "elsewhere"));
+    await symlink(join(dir, "elsewhere"), join(repo(), "public"));
+    await expect(writeAudioAtomically(out(), mp3(), allowed())).rejects.toThrow(/linked folder/);
+    expect(await readdir(join(dir, "elsewhere"))).toEqual([]); // no audio/ folder created there
+  });
+
+  it("refuses allowed folders outside the repository", async () => {
+    await expect(
+      writeAudioAtomically(join(dir, "outside", "x.mp3"), mp3(), {
+        root: repo(),
+        dirs: [join(dir, "outside")],
+      }),
+    ).rejects.toThrow(/outside/);
+  });
+
+  it("writes normally when every folder is real (even if the repository's own path has links)", async () => {
+    // The temporary directory itself may sit behind a link (e.g. /var → /private/var on macOS).
+    await writeAudioAtomically(out(), mp3(2048), allowed());
+    expect((await readFile(out())).length).toBe(2048);
+  });
+});
+
+describe("review finding 4: the key never goes on a command line", () => {
+  it("the documentation reads it at a hidden prompt and unsets it, and never assigns it inline", async () => {
+    for (const file of ["scripts/voice/README.md", "scripts/voice/synthesise.mjs"]) {
+      const text = await readFile(join(process.cwd(), file), "utf8");
+      expect(text, file).toContain("read -rs AZURE_SPEECH_KEY");
+      expect(text, file).toContain("unset AZURE_SPEECH_KEY");
+      // An inline value (`AZURE_SPEECH_KEY=…` or `=<anything>`) would land in shell history.
+      expect(text, file).not.toMatch(/AZURE_SPEECH_KEY=\S/);
+    }
   });
 });

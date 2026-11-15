@@ -27,9 +27,9 @@ The Azure Product Terms permit commercial use of audio generated with prebuilt n
 1. **Create a Speech resource** in the Azure portal: Create a resource → "Speech service".
    - Region: UK South.
    - Pricing tier: Free F0, which includes 0.5 million neural characters a month. One F0 resource is allowed per subscription.
-2. In that shell only, set the key from the resource's "Keys and Endpoint" page:
+2. In that shell only, set the key from the resource's "Keys and Endpoint" page. Type or paste it at the hidden prompt, so it never appears on screen or in your shell history:
    ```bash
-   export AZURE_SPEECH_KEY=…
+   read -rs AZURE_SPEECH_KEY && export AZURE_SPEECH_KEY
    ```
    ```bash
    export AZURE_SPEECH_REGION=uksouth
@@ -43,12 +43,18 @@ The Azure Product Terms permit commercial use of audio generated with prebuilt n
    ```bash
    AZURE_SPEECH_TIER=S0 node scripts/voice/synthesise.mjs final en-GB-RyanNeural
    ```
+   (Set the S0 key with the same hidden `read -rs` prompt as in step 2.)
 6. Point `src/content/voice.ts` at `/audio/nex-intro.mp3`.
+7. Remove the key from the shell when you're done:
+   ```bash
+   unset AZURE_SPEECH_KEY
+   ```
 
 Each sample is about 600 billable characters (SSML markup counts, except `<speak>` and `<voice>`), so the three F0 samples total about 1,800 characters, well inside F0's 0.5 million a month, and the S0 final file about 600 characters.
 
 ## Safeguards (`speech.mjs`, tested offline in `speech.test.mjs`)
 
-- **What is sent:** the SSML document starts at `<speak>`, so the template's notes are never sent. A comment inside the document is refused. The voice and style must be Azure names, and are XML-escaped.
+- **What is sent:** the SSML document starts at `<speak>`, so the template's notes are never sent. Only whole notes and whitespace may come before `<speak>` (each note is skipped whole, even if it mentions `<speak>`), and a comment inside the document is refused. The voice and style must be Azure names, and are XML-escaped.
 - **Where it goes:** `AZURE_SPEECH_REGION` must be a region name (such as `uksouth`). The request goes only to `https://<region>.tts.speech.microsoft.com`, and redirects are refused, so the subscription key can't reach any other host.
-- **What is written:** only an `audio/mpeg` MP3 response of a plausible size (1 KB–2 MB). It is written to a temporary file, then renamed into place, and only inside `docs/references/voice-samples/` or `public/audio/`.
+- **What is written:** only an `audio/mpeg` MP3 response of a plausible size (1 KB–2 MB). The body is read only up to 2 MB, whatever its headers say. It is written to a temporary file, then renamed into place, only inside `docs/references/voice-samples/` or `public/audio/`, and never through a linked folder (a symbolic link anywhere between the repository and the file is refused).
+- **The key:** it comes only from the environment. Enter it with `read -rs` (step 2), never on the command line, and `unset` it afterwards.
