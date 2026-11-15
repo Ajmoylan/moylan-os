@@ -4,6 +4,11 @@ import { announceNexAnchor, signalNex } from "~/lib/nex-events";
 import { setNexMinimised, setNexPlacement, useNexPlacement } from "./placement";
 import { NEX_MENU_ID } from "./NexSlot";
 
+/** How long a keyboard restore waits for NEX's launcher to be shown (he is drawn again first). */
+const FOCUS_WAIT_MS = 3000;
+/** NEX's launcher wherever he is now: the dock's, or the one beside a page heading. */
+const ACTIVE_LAUNCHER = '[data-stage-anchor="nex"] .nex-launcher';
+
 /** Share of the page's own NEX spot that must be in view for NEX to stay there (hysteresis). */
 const STAY = 0.35;
 const RETURN = 0.6;
@@ -27,6 +32,25 @@ export function NexCompanion() {
   const placement = useNexPlacement();
   const { pathname } = useLocation();
   const first = useRef(true);
+  /**
+   * Keyboard focus across Minimise / Show NEX: each button disappears when pressed, so focus is moved
+   * on deliberately to what replaces it, but only when the press didn't come from a pointer (mouse,
+   * pen or touch): keyboard and screen-reader activation fire no pointer events.
+   */
+  const pointerPress = useRef(false);
+  const focusNext = useRef<"show" | "launcher" | null>(null);
+  const showButton = useRef<HTMLButtonElement>(null);
+  const press = (minimise: boolean) => {
+    focusNext.current = pointerPress.current ? null : minimise ? "show" : "launcher";
+    pointerPress.current = false;
+    setNexMinimised(minimise);
+  };
+  const onPointerDown = () => {
+    pointerPress.current = true;
+  };
+  const onKeyDown = () => {
+    pointerPress.current = false;
+  };
 
   // Director: the route's primary spot, or the dock. Whether the spot is laid out is checked again
   // after viewport changes (a rotation between the narrow layout, where dedicated pages hide it, and
@@ -78,6 +102,30 @@ export function NexCompanion() {
     announceNexAnchor();
   }, [placement]);
 
+  useEffect(() => {
+    const next = focusNext.current;
+    if (next === "show" && placement === "hidden") {
+      focusNext.current = null;
+      showButton.current?.focus();
+      return;
+    }
+    if (next !== "launcher" || placement === "hidden") return;
+    focusNext.current = null;
+    // NEX's launcher is shown once the stage draws him again (app.css): focus it then, unless the
+    // visitor has already moved focus somewhere else.
+    const started = performance.now();
+    let frame = 0;
+    const seek = () => {
+      const active = document.activeElement;
+      if (active && active !== document.body) return;
+      const launcher = document.querySelector<HTMLElement>(ACTIVE_LAUNCHER);
+      if (launcher && launcher.getClientRects().length > 0) launcher.focus();
+      else if (performance.now() - started < FOCUS_WAIT_MS) frame = requestAnimationFrame(seek);
+    };
+    frame = requestAnimationFrame(seek);
+    return () => cancelAnimationFrame(frame);
+  }, [placement]);
+
   const docked = placement === "dock";
   return (
     <div className="nex-dock" data-nex-dock={placement}>
@@ -107,18 +155,30 @@ export function NexCompanion() {
           />
         )}
       </div>
+      {/* Distinct keys: one button never turns into the other (focus would silently stay on it). */}
       {placement === "hidden" ? (
-        <button type="button" className="nex-dock-show" onClick={() => setNexMinimised(false)}>
+        <button
+          key="show"
+          ref={showButton}
+          type="button"
+          className="nex-dock-show"
+          onPointerDown={onPointerDown}
+          onKeyDown={onKeyDown}
+          onClick={() => press(false)}
+        >
           <span aria-hidden="true" className="nex-dock-dot" />
           Show NEX
         </button>
       ) : (
         docked && (
           <button
+            key="hide"
             type="button"
             className="nex-dock-hide"
             aria-label="Minimise NEX"
-            onClick={() => setNexMinimised(true)}
+            onPointerDown={onPointerDown}
+            onKeyDown={onKeyDown}
+            onClick={() => press(true)}
           >
             <span aria-hidden="true">–</span>
           </button>

@@ -297,6 +297,111 @@ test.describe("NEX's dock controls exist only while NEX is drawn", () => {
   });
 });
 
+test.describe("keyboard focus when NEX is minimised and restored", () => {
+  const dockLauncher = (page: Page) =>
+    page.locator("[data-nex-dock]").getByRole("button", { name: "NEX: open site navigation" });
+  const pageLauncher = (page: Page) =>
+    page.locator("[data-nex-primary]").getByRole("button", { name: "NEX: open site navigation" });
+  const minimise = (page: Page) => page.getByRole("button", { name: "Minimise NEX" });
+  const showNex = (page: Page) => page.getByRole("button", { name: "Show NEX" });
+  const narrow = (page: Page) => page.setViewportSize({ width: 390, height: 844 });
+  /** Keyboard activation: focus the button (Safari doesn't Tab to buttons by default), press Enter. */
+  const activate = async (page: Page, target: ReturnType<typeof showNex>) => {
+    await target.focus();
+    await page.keyboard.press("Enter");
+  };
+
+  test.beforeEach(async ({ page }) => {
+    await stubDevice(page, { webgl2: true });
+  });
+
+  test("keyboard: Minimise moves focus to Show NEX, and Show NEX to NEX's launcher in the dock", async ({
+    page,
+  }) => {
+    await narrow(page);
+    await open(page, "/projects");
+    await expect(stage(page)).toHaveAttribute("data-nex-formed", "true");
+    await activate(page, minimise(page));
+    await expect(showNex(page)).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(stage(page)).toHaveAttribute("data-nex-state", "visible");
+    await expect(dockLauncher(page)).toBeFocused();
+    // The panel opens from there with the keyboard as usual.
+    await page.keyboard.press("Enter");
+    await expect(panel(page)).toBeVisible();
+  });
+
+  test("keyboard restore beside a page heading: focus goes to NEX's launcher there", async ({
+    page,
+  }) => {
+    test.skip(!wide(page), "the heading's NEX spot is laid out on wide screens only");
+    await open(page, "/about");
+    // Scroll the heading away so NEX docks, minimise him there, then return to the top.
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect.poll(() => activeSlot(page)).toBe("dock");
+    await expect(stage(page)).toHaveAttribute("data-nex-state", "visible");
+    await activate(page, minimise(page));
+    await expect(showNex(page)).toBeFocused();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    // Let the scroll settle (the page reports the heading back in view), as it has for a visitor.
+    await page.waitForTimeout(600);
+    await page.keyboard.press("Enter");
+    await expect.poll(() => activeSlot(page)).toBe("page");
+    await expect(pageLauncher(page)).toBeFocused();
+  });
+
+  test("Reduced Motion: the same focus moves, with NEX placed at once", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await narrow(page);
+    await open(page, "/projects");
+    await expect(stage(page)).toHaveAttribute("data-nex-state", "visible");
+    await activate(page, minimise(page));
+    await expect(showNex(page)).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(dockLauncher(page)).toBeFocused();
+  });
+
+  test("pointer and touch: focus is never moved for them", async ({ page, isMobile }) => {
+    await narrow(page);
+    await open(page, "/projects");
+    await expect(stage(page)).toHaveAttribute("data-nex-formed", "true");
+    const press = (target: ReturnType<typeof showNex>) =>
+      isMobile ? target.tap() : target.click();
+    await press(minimise(page));
+    await expect(showNex(page)).toBeVisible();
+    await press(showNex(page));
+    await expect(dockLauncher(page)).toBeVisible();
+    await page.waitForTimeout(500); // past any frame in which focus could have been moved
+    // A pointer or touch press leaves focus to the browser: it is never moved to NEX's launcher.
+    await expect(dockLauncher(page)).not.toBeFocused();
+  });
+
+  test("a restore never takes focus back once the visitor has moved on", async ({ page }) => {
+    await narrow(page);
+    await open(page, "/projects");
+    await expect(stage(page)).toHaveAttribute("data-nex-formed", "true");
+    await activate(page, minimise(page));
+    await expect(showNex(page)).toBeFocused();
+    // Hold NEX back, so his launcher isn't available yet when focus moves elsewhere.
+    await page.evaluate(() => {
+      const stageEl = document.querySelector<HTMLElement>(".os-stage")!;
+      new MutationObserver(() => {
+        if (stageEl.dataset.nexState === "visible") stageEl.dataset.nexState = "held";
+      }).observe(stageEl, { attributes: true, attributeFilter: ["data-nex-state"] });
+    });
+    await page.keyboard.press("Enter");
+    const skip = page.getByRole("link", { name: "Skip to main content" });
+    await skip.focus();
+    await page.evaluate(() => {
+      // Release NEX: his launcher appears; focus must stay where the visitor put it.
+      const stageEl = document.querySelector<HTMLElement>(".os-stage")!;
+      stageEl.dataset.nexState = "visible";
+    });
+    await page.waitForTimeout(500);
+    await expect(skip).toBeFocused();
+  });
+});
+
 test.describe("discoverability and positioning (launch sprint refinement)", () => {
   test.beforeEach(async ({ page }) => {
     await stubDevice(page, { webgl2: true });

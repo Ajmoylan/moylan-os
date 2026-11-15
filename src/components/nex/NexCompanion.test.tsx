@@ -118,6 +118,67 @@ describe("NexCompanion", () => {
     expect(anchor()).toBe("dock");
   });
 
+  describe("keyboard focus across Minimise and Show NEX", () => {
+    const minimiseButton = () => screen.getByRole("button", { name: "Minimise NEX" });
+    const showButton = () => screen.getByRole("button", { name: "Show NEX" });
+    const dockLauncher = () =>
+      document.querySelector<HTMLElement>(
+        '[data-nex-dock] [aria-label="NEX: open site navigation"]',
+      );
+    /** jsdom has no layout: report the launcher as shown (as once the stage draws NEX again). */
+    const launcherShown = () =>
+      vi.spyOn(Element.prototype, "getClientRects").mockImplementation(function (this: Element) {
+        return (this.classList.contains("nex-launcher") ? [{}] : []) as unknown as DOMRectList;
+      });
+    const frames = () => act(async () => new Promise((resolve) => setTimeout(resolve, 60)));
+
+    it("keyboard (or screen reader): Minimise focuses Show NEX; Show NEX focuses NEX's launcher", async () => {
+      launcherShown();
+      page();
+      await act(async () => observe(0));
+      minimiseButton().focus();
+      fireEvent.keyDown(minimiseButton(), { key: "Enter" });
+      fireEvent.click(minimiseButton());
+      expect(showButton()).toHaveFocus();
+      fireEvent.click(showButton());
+      await frames();
+      expect(dockLauncher()).not.toBeNull();
+      expect(dockLauncher()).toHaveFocus();
+    });
+
+    it("pointer or touch presses never move focus", async () => {
+      launcherShown();
+      page();
+      await act(async () => observe(0));
+      fireEvent.pointerDown(minimiseButton());
+      fireEvent.click(minimiseButton());
+      expect(showButton()).not.toHaveFocus();
+      fireEvent.pointerDown(showButton());
+      fireEvent.click(showButton());
+      await frames();
+      expect(dockLauncher()).not.toHaveFocus();
+    });
+
+    it("waits for the launcher to be shown, but never takes focus back from the visitor", async () => {
+      const shown = launcherShown();
+      shown.mockReturnValue([] as unknown as DOMRectList); // NEX not drawn yet
+      page();
+      await act(async () => observe(0));
+      fireEvent.click(minimiseButton());
+      fireEvent.click(showButton());
+      await frames();
+      expect(dockLauncher()).not.toHaveFocus(); // not shown yet: nothing to focus
+      const elsewhere = document.createElement("button");
+      document.body.append(elsewhere);
+      elsewhere.focus(); // the visitor moves on
+      shown.mockImplementation(function (this: Element) {
+        return (this.classList.contains("nex-launcher") ? [{}] : []) as unknown as DOMRectList;
+      });
+      await frames();
+      expect(elsewhere).toHaveFocus();
+    });
+  });
+
   it("an ordinary resize moves nothing (NEX stays docked while the spot is scrolled away)", async () => {
     page();
     await act(async () => observe(0));
