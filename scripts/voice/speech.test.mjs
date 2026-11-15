@@ -303,7 +303,7 @@ describe("review finding 1: nothing before <speak> is ever sent", () => {
       `${ssml} `,
       ssml.replace('rate="-8%"', 'rate="-9%"'),
       ssml.replace("Hello.", "Hello!"),
-      ssml.replace("\n", "\r\n"),
+      `${ssml}\n`, // a line ending alone
       buildSsml(template, "en-GB-RyanNeural", "cheerful"),
     ]) {
       expect(changed).not.toBe(ssml);
