@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { lstat, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -258,21 +259,55 @@ describe("writeAudioAtomically", () => {
 
 describe("review finding 1: nothing before <speak> is ever sent", () => {
   const root = template.slice(template.indexOf("<speak"));
-  /** The previous implementation, kept as the reference for the committed template's output. */
-  const previous = (t, voice, style) =>
-    t
-      .replace(/<!--[\s\S]*?-->\s*/, "")
-      .replace("{{VOICE}}", voice)
-      .replace("{{STYLE_OPEN}}", style ? `<mstts:express-as style="${style}">` : "")
-      .replace("{{STYLE_CLOSE}}", style ? "</mstts:express-as>" : "");
+  /**
+   * Fixed SHA-256 fingerprints (and UTF-8 byte lengths) of the SSML that commit 4e4d344 generated
+   * from the committed template, the output verified by the independent review. They are recorded
+   * values, never recomputed by the test: any change to the SSML sent to Azure (the template, the
+   * voice or style handling, whitespace) fails here. If the template is changed on purpose, record
+   * new values only after reviewing the new SSML.
+   */
+  const VERIFIED_SSML = [
+    {
+      voice: "en-GB-RyanNeural",
+      style: null,
+      bytes: 726,
+      sha256: "e8358b7450b4498722e5968055a9b210bde1548d1cdc923a146fb540d6ae009e",
+    },
+    {
+      voice: "en-GB-RyanNeural",
+      style: "chat",
+      bytes: 776,
+      sha256: "acd765a4aad4d27a45b4e4e779f31286364e8d29ec8e5bfba96e6e5aa535aaf0",
+    },
+    {
+      voice: "en-GB-ThomasNeural",
+      style: null,
+      bytes: 728,
+      sha256: "b8592820453600b14ff7415bab5fe2d1383ea44a231417f7266c6aa687afe060",
+    },
+  ];
+  const fingerprint = (text) => createHash("sha256").update(text, "utf8").digest("hex");
 
-  it("the committed template's SSML is byte-for-byte unchanged", () => {
-    for (const [voice, style] of [
-      ["en-GB-RyanNeural", null],
-      ["en-GB-RyanNeural", "chat"],
-      ["en-GB-ThomasNeural", null],
+  it("the committed template's SSML is byte-for-byte the verified output (Ryan, Ryan chat, Thomas)", () => {
+    for (const { voice, style, bytes, sha256 } of VERIFIED_SSML) {
+      const ssml = buildSsml(template, voice, style);
+      expect(Buffer.byteLength(ssml, "utf8"), `${voice} ${style}`).toBe(bytes);
+      expect(fingerprint(ssml), `${voice} ${style}`).toBe(sha256);
+    }
+  });
+
+  it("any change to the generated SSML changes its fingerprint", () => {
+    const ssml = buildSsml(template, "en-GB-RyanNeural");
+    const recorded = VERIFIED_SSML[0].sha256;
+    for (const changed of [
+      `${ssml} `,
+      ssml.replace('rate="-8%"', 'rate="-9%"'),
+      ssml.replace("Hello.", "Hello!"),
+      ssml.replace("\n", "\r\n"),
+      buildSsml(template, "en-GB-RyanNeural", "cheerful"),
     ]) {
-      expect(buildSsml(template, voice, style)).toBe(previous(template, voice, style));
+      expect(changed).not.toBe(ssml);
+      expect(fingerprint(changed)).not.toBe(recorded);
     }
   });
 
