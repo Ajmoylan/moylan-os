@@ -429,6 +429,18 @@
     pointer-events: auto;
   }
   /*
+   * NEX's dock controls (his button and Minimise) exist only while the stage is drawing NEX: not
+   * before he appears, not on devices that can't run his shaders (the stage still draws the
+   * background), not while he is faded out. `display: none` also takes them out of the tab order
+   * and the accessibility tree, so there is never an invisible control to tab to or tap. "Show NEX"
+   * is deliberately not included: it is how a minimised NEX comes back.
+   */
+  :root:not(:has(.os-stage[data-nex-state="visible"]))
+    .nex-dock
+    :is(.nex-launcher, .nex-dock-hide) {
+    display: none;
+  }
+  /*
    * The mirror spans NEX's footprint but shows mainly his core and rings, at 60 %: enough to keep
    * him recognisable over cards, while text passing beneath keeps nearly the contrast it has with
    * NEX behind the page (measured on 320–412 px phones; launch-evidence/review-4).

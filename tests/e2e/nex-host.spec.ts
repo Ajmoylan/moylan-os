@@ -151,6 +151,152 @@ test.describe("with WebGL2 and full motion", () => {
   });
 });
 
+test.describe("NEX's dock controls exist only while NEX is drawn", () => {
+  const dockLauncher = (page: Page) =>
+    page.locator("[data-nex-dock]").getByRole("button", { name: "NEX: open site navigation" });
+  const minimise = (page: Page) => page.getByRole("button", { name: "Minimise NEX" });
+  const showNex = (page: Page) => page.getByRole("button", { name: "Show NEX" });
+  /** Dock controls a visitor could see, tap or tab to (anything rendered in the dock). */
+  const usableDockControls = (page: Page) =>
+    page.evaluate(
+      () =>
+        [...document.querySelectorAll<HTMLElement>("[data-nex-dock] button")].filter(
+          (b) => b.getClientRects().length > 0,
+        ).length,
+    );
+  /** Narrow layout: dedicated pages hide their own NEX spot, so NEX is in the dock from the start. */
+  const narrow = (page: Page) => page.setViewportSize({ width: 390, height: 844 });
+  const press = (page: Page, target: ReturnType<typeof showNex>, isMobile: boolean) =>
+    isMobile ? target.tap() : target.click();
+
+  test("before NEX appears and while he forms: no frame shows a dock control without NEX drawn", async ({
+    page,
+  }) => {
+    await stubDevice(page, { webgl2: true });
+    // Every animation frame from the start: is a dock control rendered while NEX isn't drawn?
+    await page.addInitScript(() => {
+      const w = window as unknown as { __violations: string[]; __hiddenFrames: number };
+      w.__violations = [];
+      w.__hiddenFrames = 0;
+      const tick = () => {
+        const state = document.querySelector<HTMLElement>(".os-stage")?.dataset.nexState;
+        const rendered = [
+          ...document.querySelectorAll(
+            "[data-nex-dock] .nex-launcher, [data-nex-dock] .nex-dock-hide",
+          ),
+        ].some((el) => el.getClientRects().length > 0);
+        if (state !== "visible") w.__hiddenFrames++;
+        if (rendered && state !== "visible") w.__violations.push(state ?? "none");
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    await narrow(page);
+    await open(page, "/projects");
+    await expect(stage(page)).toHaveAttribute("data-nex-formed", "true");
+    const probe = await page.evaluate(() => {
+      const w = window as unknown as { __violations: string[]; __hiddenFrames: number };
+      return { violations: w.__violations, hiddenFrames: w.__hiddenFrames };
+    });
+    expect(probe.hiddenFrames).toBeGreaterThan(0); // the "not drawn yet" period was observed
+    expect(probe.violations).toEqual([]);
+    // Once NEX is drawn (here, formed), his controls are there as before.
+    await expect(dockLauncher(page)).toBeVisible();
+    await expect(minimise(page)).toBeVisible();
+  });
+
+  test("devices that can't run NEX's shaders: the background still draws, no dock controls", async ({
+    page,
+  }) => {
+    await stubDevice(page, { webgl2: true });
+    // Too few vertex uniforms for NEX's uniform transport, and a failing float-texture probe.
+    await page.addInitScript(() => {
+      const proto = WebGL2RenderingContext.prototype;
+      const getParameter = proto.getParameter;
+      proto.getParameter = function (this: WebGL2RenderingContext, name: number) {
+        return name === this.MAX_VERTEX_UNIFORM_VECTORS ? 100 : getParameter.call(this, name);
+      };
+      const readPixels = proto.readPixels as (...args: unknown[]) => void;
+      (proto as unknown as { readPixels: unknown }).readPixels = function (
+        this: WebGL2RenderingContext,
+        ...args: unknown[]
+      ) {
+        readPixels.apply(this, args);
+        if (args[2] === 4 && args[3] === 2) (args[6] as Uint8Array)[13] = 0;
+      };
+    });
+    await narrow(page);
+    await open(page, "/projects");
+    await expect(stage(page)).toHaveAttribute("data-stage-state", "running");
+    await expect(stage(page)).toHaveAttribute("data-agent-state", "unsupported");
+    await page.waitForTimeout(1500);
+    await expect(stage(page)).not.toHaveAttribute("data-nex-state", "visible");
+    await expect(dockLauncher(page)).toBeHidden();
+    await expect(minimise(page)).toBeHidden();
+    expect(await usableDockControls(page)).toBe(0);
+    // Keyboard: tabbing through the whole page never lands in the dock.
+    for (let i = 0; i < 40; i++) {
+      await page.keyboard.press("Tab");
+      expect(await page.evaluate(() => !!document.activeElement?.closest("[data-nex-dock]"))).toBe(
+        false,
+      );
+    }
+  });
+
+  test("the static fallback (no WebGL): no dock, nothing to tab to", async ({ page }) => {
+    await stubDevice(page, { webgl2: false });
+    await narrow(page);
+    await open(page, "/projects");
+    await page.waitForTimeout(800);
+    expect(await usableDockControls(page)).toBe(0);
+    await expect(dockLauncher(page)).toBeHidden();
+  });
+
+  test("minimise and restore, by touch or click: Show NEX stays available while NEX is hidden", async ({
+    page,
+    isMobile,
+  }) => {
+    await stubDevice(page, { webgl2: true });
+    await narrow(page);
+    await open(page, "/projects");
+    await expect(stage(page)).toHaveAttribute("data-nex-formed", "true");
+    await press(page, minimise(page), isMobile);
+    await expect(stage(page)).toHaveAttribute("data-nex-state", "hidden"); // faded out
+    await expect(showNex(page)).toBeVisible(); // not hidden with the other controls
+    expect(await usableDockControls(page)).toBe(1);
+    await press(page, showNex(page), isMobile);
+    await expect(stage(page)).toHaveAttribute("data-nex-state", "visible");
+    await expect(dockLauncher(page)).toBeVisible();
+    await press(page, dockLauncher(page), isMobile);
+    await expect(panel(page)).toBeVisible();
+  });
+
+  test("Reduced Motion, keyboard only: open the panel, minimise and restore from the dock", async ({
+    page,
+  }) => {
+    await stubDevice(page, { webgl2: true });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await narrow(page);
+    await open(page, "/projects");
+    await expect(stage(page)).toHaveAttribute("data-stage-state", "static");
+    await expect(stage(page)).toHaveAttribute("data-nex-state", "visible");
+    await dockLauncher(page).focus();
+    await page.keyboard.press("Enter");
+    await expect(panel(page)).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(panel(page)).toBeHidden();
+    await minimise(page).focus();
+    await page.keyboard.press("Enter");
+    await expect(stage(page)).toHaveAttribute("data-nex-state", "hidden");
+    await expect(dockLauncher(page)).toBeHidden();
+    await showNex(page).focus();
+    await expect(showNex(page)).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(stage(page)).toHaveAttribute("data-nex-state", "visible");
+    await expect(dockLauncher(page)).toBeVisible();
+  });
+});
+
 test.describe("discoverability and positioning (launch sprint refinement)", () => {
   test.beforeEach(async ({ page }) => {
     await stubDevice(page, { webgl2: true });
