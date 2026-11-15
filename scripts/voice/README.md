@@ -10,9 +10,9 @@ NEX's spoken introduction is one prerecorded MP3 served from this site (`public/
   - "Moylan" as /ˈmɔɪlən/.
 - `synthesise.mjs`: one REST request per recording. It needs `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION` in the shell. The key is never stored in the repository.
 - `src/content/voice.ts`: which recording the site plays.
-  - **Local previews:** set `VITE_NEX_VOICE_PREVIEW` in the Git-ignored `.env.local`, for example `/audio/nex-intro.ryan-f0.placeholder.mp3`. Copy the F0 audition into `public/audio/` with `.placeholder.` in its name, which is Git-ignored.
+  - **Local previews:** set `VITE_NEX_VOICE_PREVIEW` in the Git-ignored `.env.local`, for example `/audio/nex-intro.ryan-f0.placeholder.mp3`. Copy the F0 audition into `public/audio/` with `.placeholder.` in its name, which is Git-ignored. Use it in the dev server, or build with `npm run build:voice-preview` (local only; never deploy that build).
   - **Production:** `LICENSED_RECORDING`, a committed, commercially licensed file. While it is `null`, the site is deliberately text-only.
-  - **Guard:** `scripts/postbuild.mjs` fails a CI build that contains any placeholder file or reference.
+  - **Guard** (`scripts/build-guards.mjs`): a production build (`npm run build`, locally or in CI) fails if it has any trace of a local preview: a placeholder file or reference, or `VITE_NEX_VOICE_PREVIEW`. So with a preview set up, a normal local build fails until you use `npm run build:voice-preview`, or remove the setting and the placeholder files. The preview build itself fails in CI.
 
 ## Licensing
 

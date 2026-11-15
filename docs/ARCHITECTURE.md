@@ -1160,7 +1160,7 @@ The flow simulation publishes the cursor's position (`StageInteraction.cursor`, 
 **TEST morph diagnostic: development builds only.** The Milestone 2.4b.2 `?morph=test` switch (§23) is kept for development behind `MORPH_TEST_BUILD` (`Stage.tsx`), a build-time constant that is true only in the dev server and in builds made with `VITE_MORPH_TEST=1` (`npm run build:morph-test`).
 - **Production builds** compile it out: no TEST chunk, and `?morph=test` does nothing (an e2e test checks that TEST is never requested or drawn).
 - **Guard** (`scripts/postbuild.mjs`): any build that contains TEST's shaders (marker: the `uTFrames` uniform) without `VITE_MORPH_TEST=1` fails; a flagged build warns that it must never be deployed.
-- **Tests:** the `?morph=test` e2e scenarios (`morph.spec.ts`, `viability.spec.ts`) skip on production builds and run in CI's second, flagged build (`npm run build:morph-test`, then `npm run test:e2e:morph`). Deployment must use the plain `npm run build`.
+- **Tests:** the `?morph=test` e2e scenarios (`morph.spec.ts`, `viability.spec.ts`) skip on production builds and run in CI's second, flagged build (`npm run build:morph-test`, then `npm run test:e2e:morph`). That run sets `MORPH_TEST_REQUIRED=1` (in the script and in CI): a build without the TEST shape fails it, so the step can never pass with every morph test skipped. Deployment must use the plain `npm run build`.
 
 **NEX's voice** (`NexVoice`, `content/voice.ts`): provider-independent. The site plays one prerecorded, same-origin file; replacing the voice (Azure S0, ElevenLabs, …) means dropping in a file and setting `LICENSED_RECORDING`, with no change to NEX's animation, navigation or subtitles.
 - **Subtitles:** the full introduction (`NEX_INTRO`) is always visible beneath NEX, whether sound is on, muted, unavailable or unsupported. It is marked while NEX speaks and never removed.
@@ -1170,11 +1170,12 @@ The flow simulation publishes the cursor's position (`StageInteraction.cursor`, 
   - Nothing autoplays, nothing loads before the first play, and the audio is released on unmount, so navigation never restarts it.
   - Unavailable or unsupported audio removes the controls and says so. A discreet line discloses that the voice is AI-generated.
 - **Which recording plays:**
-  1. A local preview: `VITE_NEX_VOICE_PREVIEW` in the Git-ignored `.env.local`, for example the Azure F0 "Ryan" audition in Git-ignored `public/audio/*.placeholder.*`.
+  1. A local preview: `VITE_NEX_VOICE_PREVIEW` in the Git-ignored `.env.local`, for example the Azure F0 "Ryan" audition in Git-ignored `public/audio/*.placeholder.*`. Only in the dev server and in an explicit local preview build, `npm run build:voice-preview`.
   2. Otherwise `LICENSED_RECORDING`.
   3. Otherwise **text-only**, the deliberate production configuration until a licensed recording exists. It has no audio controls and passes CI.
-- **Build guard** (`scripts/postbuild.mjs`):
-  - In CI, any `.placeholder.` audio file, or any reference to one in the built HTML or JavaScript, fails the build. Nothing is removed silently.
+- **Build guard** (`scripts/postbuild.mjs`, logic in `scripts/build-guards.mjs`, unit-tested):
+  - A production build (`npm run build`), locally as well as in CI, fails on any trace of a local preview: a `.placeholder.` audio file, a reference to one in the built HTML or JavaScript, or `VITE_NEX_VOICE_PREVIEW` as Vite saw it. Nothing is removed silently. (Before PR #17's review this applied in CI only, so a local build could have copied unlicensed audio into `build/client`.)
+  - The local preview build (`npm run build:voice-preview`, which sets `NEX_VOICE_PREVIEW_BUILD=1`) may contain one, is labelled "never deploy this build", and fails in CI.
   - A declared licensed recording must exist and must not be a placeholder.
   - The build log states which configuration was built.
 - **Licensing:** F0 audio is for private auditions only. The Azure Product Terms permit commercial use of prebuilt neural voice output for paid-tier customers, so a published Azure recording must come from S0 (`scripts/voice/`).

@@ -68,6 +68,9 @@ jobs:
         run: npm run build:morph-test
 
       - name: Morph and viability end-to-end tests (development-only TEST shape)
+        # Required: without the TEST shape in the build these tests fail, never all skip.
+        env:
+          MORPH_TEST_REQUIRED: "1"
         run: npm run test:e2e:morph
 
       - name: Upload Playwright report

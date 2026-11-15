@@ -7,8 +7,9 @@
  *
  * Which recording plays:
  * 1. A local preview recording, `VITE_NEX_VOICE_PREVIEW` in the Git-ignored `.env.local` (e.g. the
- *    Azure F0 "Ryan" audition, `public/audio/*.placeholder.*`, also Git-ignored). Local builds only:
- *    `scripts/postbuild.mjs` fails a CI build that contains any placeholder.
+ *    Azure F0 "Ryan" audition, `public/audio/*.placeholder.*`, also Git-ignored). Only in the dev
+ *    server and in an explicit local preview build (`npm run build:voice-preview`):
+ *    `scripts/postbuild.mjs` fails any other build, locally or in CI, that has a trace of one.
  * 2. Otherwise `LICENSED_RECORDING`: a commercially licensed file committed in public/audio/.
  * 3. Otherwise text-only: NEX's introduction is shown as text, with no audio controls. This is the
  *    deliberate production configuration until a licensed recording exists.
