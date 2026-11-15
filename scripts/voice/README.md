@@ -46,3 +46,9 @@ The Azure Product Terms permit commercial use of audio generated with prebuilt n
 6. Point `src/content/voice.ts` at `/audio/nex-intro.mp3`.
 
 Each sample is about 600 billable characters (SSML markup counts, except `<speak>` and `<voice>`), so the three F0 samples total about 1,800 characters, well inside F0's 0.5 million a month, and the S0 final file about 600 characters.
+
+## Safeguards (`speech.mjs`, tested offline in `speech.test.mjs`)
+
+- **What is sent:** the SSML document starts at `<speak>`, so the template's notes are never sent. A comment inside the document is refused. The voice and style must be Azure names, and are XML-escaped.
+- **Where it goes:** `AZURE_SPEECH_REGION` must be a region name (such as `uksouth`). The request goes only to `https://<region>.tts.speech.microsoft.com`, and redirects are refused, so the subscription key can't reach any other host.
+- **What is written:** only an `audio/mpeg` MP3 response of a plausible size (1 KB–2 MB). It is written to a temporary file, then renamed into place, and only inside `docs/references/voice-samples/` or `public/audio/`.
