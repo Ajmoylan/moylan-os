@@ -480,7 +480,16 @@
     opacity: 1;
     color: var(--color-text);
   }
+  /*
+   * Placed in NEX's own corner of the dock, not after it: the dock is positioned so that its spot
+   * ends just above the bottom edge (safe areas and toolbars included), so anything laid out below
+   * the spot would hang off the screen.
+   */
   .nex-dock-show {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    white-space: nowrap;
     display: inline-flex;
     min-height: 2.75rem;
     align-items: center;

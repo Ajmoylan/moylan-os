@@ -402,6 +402,79 @@ test.describe("keyboard focus when NEX is minimised and restored", () => {
   });
 });
 
+test.describe("Show NEX stays fully visible after minimising", () => {
+  const showNex = (page: Page) => page.getByRole("button", { name: "Show NEX" });
+  /** Show NEX's box against the visible viewport, and whether its centre is really the button. */
+  const placement = (page: Page) =>
+    showNex(page).evaluate((button) => {
+      const box = button.getBoundingClientRect();
+      const width = window.visualViewport?.width ?? window.innerWidth;
+      const height = window.visualViewport?.height ?? window.innerHeight;
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      return {
+        inside:
+          box.left >= 0 &&
+          box.top >= 0 &&
+          box.right <= width &&
+          box.bottom <= height &&
+          box.width > 0,
+        hit: hit !== null && button.contains(hit),
+        box: [box.left, box.top, box.right, box.bottom].map(Math.round),
+        viewport: [width, height].map(Math.round),
+      };
+    });
+  /** Minimises NEX from the dock (scrolled to the end, so wide pages dock him too). */
+  const minimiseFromDock = async (page: Page) => {
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect.poll(() => activeSlot(page)).toBe("dock");
+    await expect(stage(page)).toHaveAttribute("data-nex-state", "visible");
+    await page.getByRole("button", { name: "Minimise NEX" }).click();
+    await expect(showNex(page)).toBeVisible();
+  };
+
+  test.beforeEach(async ({ page }) => {
+    await stubDevice(page, { webgl2: true });
+  });
+
+  for (const [width, height] of [
+    [320, 568],
+    [375, 667],
+    [390, 844],
+    [430, 932],
+    [768, 1024],
+    [1280, 800],
+    [1920, 1080],
+  ] as const) {
+    test(`${width}×${height}: inside the viewport and clickable`, async ({ page }) => {
+      await page.setViewportSize({ width, height });
+      await open(page, "/projects");
+      await minimiseFromDock(page);
+      const result = await placement(page);
+      expect(result, JSON.stringify(result)).toMatchObject({ inside: true, hit: true });
+      await showNex(page).click();
+      await expect(stage(page)).toHaveAttribute("data-nex-state", "visible");
+    });
+  }
+
+  test("still inside after rotating while minimised", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await open(page, "/projects");
+    await minimiseFromDock(page);
+    for (const size of [
+      { width: 844, height: 390 },
+      { width: 390, height: 844 },
+    ]) {
+      await page.setViewportSize(size);
+      await expect
+        .poll(async () => {
+          const result = await placement(page);
+          return result.inside && result.hit;
+        })
+        .toBe(true);
+    }
+  });
+});
+
 test.describe("discoverability and positioning (launch sprint refinement)", () => {
   test.beforeEach(async ({ page }) => {
     await stubDevice(page, { webgl2: true });
