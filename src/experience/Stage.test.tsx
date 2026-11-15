@@ -350,7 +350,7 @@ describe("Stage frame loop and lifecycle", () => {
     act(() => options().onContextRestored!());
     for (const old of Object.values(before)) expect(old.disposed).toBeGreaterThanOrEqual(1);
     expect(last("core")).not.toBe(before.core);
-    expect(engine().layers).toHaveLength(4);
+    expect(engine().layers).toHaveLength(5); // the four mocked layers and the companion mirror
     expect(seen.engines).toHaveLength(1);
     expect(stageEl(container).dataset.stageState).toBe("starting");
     expect(lastLoop()).toBe("always");
@@ -469,7 +469,8 @@ describe("Stage frame loop and lifecycle", () => {
     expect(seen.engines[1]!.disposed).toBe(0);
     const live = seen.layers.filter((l) => l.disposed === 0);
     expect(live.map((l) => l.kind).sort()).toEqual(["ambient", "clock", "core", "flow"]);
-    expect(engine().layers).toHaveLength(4);
+    // The four mocked layers plus the companion mirror (real, DOM-only), all from the new engine.
+    expect(engine().layers).toHaveLength(5);
     expect(lastField().settings.particles).toBe(12_000);
     expect(lastNex().path).toBe("/");
     expect(lastLoop()).toBe("always");

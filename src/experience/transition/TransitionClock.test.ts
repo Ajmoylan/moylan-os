@@ -5,11 +5,18 @@ import { rgb } from "../ambient/config";
 import type * as Definitions from "../agents/definitions";
 import type { AgentRenderDefinition } from "../agents/types";
 import type { Engine } from "../engine/Engine";
+import {
+  NEX_ANCHOR_EVENT,
+  NEX_ATTENTION_EVENT,
+  type NexAttention,
+  type NexHolder,
+} from "~/lib/nex-events";
+import { ATTENTION_HOLD } from "../nex/look";
 import { ARRIVAL_SECONDS, FADE_SECONDS, NEX_ANCHOR, NEX_PACE } from "../nex/NexAvatar";
 import { NEX_PARAMS } from "../nex/params";
 import { CAMERA_DISTANCE, placeNex } from "../nex/placement";
 import { createMorphReport, createTransition } from "./StageTransition";
-import { TransitionClock, type TransitionClockProps } from "./TransitionClock";
+import { GLIDE_SECONDS, TransitionClock, type TransitionClockProps } from "./TransitionClock";
 
 /**
  * The single transition timeline (Milestone 2.4b.2): the only writer of the shared frame. It owns
@@ -37,8 +44,15 @@ vi.mock("../nex/anchor", () => ({
     detach() {
       anchor.detached++;
     }
+    private element: Element | null = null;
     setElement(element: Element | null) {
       anchor.elements.push(element);
+      const changed = element !== this.element;
+      this.element = element;
+      return changed;
+    }
+    get box() {
+      return anchor.box;
     }
     read() {
       return anchor.box;
@@ -127,7 +141,13 @@ describe("StageTransition", () => {
     expect(transition.palette.deep.toArray()).toEqual(rgb("#14a89c").toArray());
     expect(transition.palette.accent.toArray()).toEqual(rgb("#3fe0d0").toArray());
     expect(transition.palette.hot.toArray()).toEqual(rgb("#c9fbf5").toArray());
-    expect(transition.visibility).toEqual({ fade: 0, arrival: 0, formed: 0, time: 0 });
+    expect(transition.visibility).toEqual({
+      fade: 0,
+      arrival: 0,
+      formed: 0,
+      time: 0,
+      attention: 0,
+    });
   });
 
   it("refuses an agent without a WebGL definition", () => {
@@ -225,6 +245,7 @@ describe("TransitionClock", () => {
       arrival: ARRIVAL_SECONDS,
       formed: 1,
       time: 0,
+      attention: 0,
     });
     expect(transition.state).toBe("idle");
   });
@@ -247,7 +268,13 @@ describe("TransitionClock", () => {
     clock.dispose();
     const e = engine();
     const rebuilt = new TransitionClock(e, { transition, report: createMorphReport() });
-    expect(transition.visibility).toEqual({ fade: 0, arrival: 0, formed: 0, time: 0 });
+    expect(transition.visibility).toEqual({
+      fade: 0,
+      arrival: 0,
+      formed: 0,
+      time: 0,
+      attention: 0,
+    });
     rebuilt.setProps(props());
     rebuilt.update(e, 0.016);
     expect(transition.state).toBe("arriving");
@@ -392,7 +419,13 @@ describe("TransitionClock", () => {
       clock.setProps(props({ motion: "reduced", agent: "forge", path: "/engineering" }));
       run(0.016);
       expect(transition).toMatchObject({ source: "forge", state: "idle" });
-      expect(transition.visibility).toEqual({ fade: 1, arrival: 1, formed: 1, time: 0 });
+      expect(transition.visibility).toEqual({
+        fade: 1,
+        arrival: 1,
+        formed: 1,
+        time: 0,
+        attention: 0,
+      });
     });
 
     it("Reduced Motion becoming active while preparing snaps to the destination", () => {
@@ -425,5 +458,222 @@ describe("TransitionClock", () => {
       });
       expect(transition.issued).toBe(issued); // no preparation for an unsupported agent
     });
+  });
+});
+
+/** Launch sprint: NEX glides between anchors, and acknowledges the visitor's attention. */
+describe("TransitionClock: NEX's anchors and attention (launch sprint)", () => {
+  const moveAnchor = (left: number, top: number) => {
+    document.body.innerHTML = '<div data-stage-anchor="nex" id="next"></div>';
+    anchor.box = { present: true, left, top, width: 200, height: 200 };
+    anchor.version++;
+    window.dispatchEvent(new Event(NEX_ANCHOR_EVENT));
+  };
+  const attention = (kind: NexAttention, source: NexHolder = "pointer") =>
+    window.dispatchEvent(new CustomEvent(NEX_ATTENTION_EVENT, { detail: { kind, source } }));
+
+  it("glides from where NEX is drawn to a new anchor instead of jumping (Full Motion)", () => {
+    const { e, clock, transition, run } = rig();
+    clock.setProps(props());
+    run(3);
+    const start = { ...transition.placement.displayed };
+    const segment = transition.placement.segment;
+    moveAnchor(100, 500);
+    const end = placeNex(anchor.box, e, NEX_PARAMS.fov);
+    expect(e.invalidate).toHaveBeenCalled();
+
+    run(GLIDE_SECONDS / 3);
+    const mid = transition.placement.displayed;
+    expect(transition.placement.segment).toBe(segment + 1);
+    expect(mid.x).toBeLessThan(start.x);
+    expect(mid.x).toBeGreaterThan(end.x);
+    expect(mid.scale).toBeLessThan(start.scale);
+    expect(mid.scale).toBeGreaterThan(end.scale);
+
+    expect(transition.placement.gliding).toBe(true);
+    run(GLIDE_SECONDS);
+    // Essentially arrived in GLIDE_SECONDS (a spring: it then settles the last fraction).
+    const remaining = Math.hypot(
+      transition.placement.displayed.x - end.x,
+      transition.placement.displayed.y - end.y,
+    );
+    expect(remaining).toBeLessThan(0.05 * Math.hypot(start.x - end.x, start.y - end.y));
+    run(2 * GLIDE_SECONDS);
+    expect(transition.placement.displayed).toEqual(end); // settled exactly
+    expect(transition.placement.gliding).toBe(false);
+    // Once landed, NEX follows its anchor directly again (e.g. while the page scrolls).
+    anchor.box = { ...anchor.box, top: 300 };
+    anchor.version++;
+    run(0.05);
+    expect(transition.placement.displayed).toEqual(placeNex(anchor.box, e, NEX_PARAMS.fov));
+  });
+
+  /** NEX's screen-space velocity (world units per second) over one frame. */
+  const step = (run: (s: number) => void, transition: ReturnType<typeof createTransition>) => {
+    const before = { ...transition.placement.displayed };
+    run(0.016);
+    const after = transition.placement.displayed;
+    return { vx: (after.x - before.x) / 0.016, vy: (after.y - before.y) / 0.016 };
+  };
+
+  it("a NEX already moving (carried by the scrolling page) keeps flowing through the handover", () => {
+    const { clock, transition, run } = rig();
+    clock.setProps(props());
+    run(3);
+    // The page scrolls: NEX's spot moves up 12 px a frame.
+    let v = { vx: 0, vy: 0 };
+    for (let i = 0; i < 20; i++) {
+      anchor.box = { ...anchor.box, top: anchor.box.top - 12 };
+      anchor.version++;
+      v = step(run, transition);
+    }
+    expect(v.vy).toBeGreaterThan(0); // moving up the screen (world y up)
+    moveAnchor(900, 560); // the dock takes NEX
+    const first = step(run, transition);
+    // No stop at the handover: the first glide frame continues at (nearly) the same velocity.
+    expect(first.vy).toBeGreaterThan(0.6 * v.vy);
+    expect(first.vy).toBeLessThan(1.4 * v.vy);
+  });
+
+  it("a layout change (rotation) is not inherited as velocity by the next glide", () => {
+    const { e, clock, transition, run } = rig();
+    clock.setProps(props());
+    run(3);
+    // Rotation: a new viewport, and NEX's spot re-laid out far away in one frame.
+    (e as { width: number; height: number }).width = 800;
+    (e as { width: number; height: number }).height = 1200;
+    anchor.box = { ...anchor.box, left: 100, top: 900 };
+    anchor.version++;
+    run(0.016);
+    moveAnchor(500, 1000); // the dock takes NEX straight after
+    const first = step(run, transition);
+    // From rest: no fling at the glide's speed cap in the direction of the re-layout.
+    expect(Math.hypot(first.vx, first.vy)).toBeLessThan(2);
+  });
+
+  it("a jump of NEX's spot (no viewport change) is not inherited as velocity either", () => {
+    const { clock, transition, run } = rig();
+    clock.setProps(props());
+    run(3);
+    // A link to a section: the spot jumps 700 px up the screen in one frame.
+    anchor.box = { ...anchor.box, top: anchor.box.top - 700 };
+    anchor.version++;
+    run(0.016);
+    moveAnchor(900, 560); // the dock (below): the glide must not start flung upwards
+    const first = step(run, transition);
+    expect(first.vy).toBeLessThan(1);
+    expect(Math.hypot(first.vx, first.vy)).toBeLessThan(2);
+  });
+
+  it("reversing mid-glide turns smoothly (no stop-and-restart) and lands exactly back", () => {
+    const { e, clock, transition, run } = rig();
+    clock.setProps(props());
+    run(3);
+    const home = { ...anchor.box };
+    const original = placeNex(home, e, NEX_PARAMS.fov);
+    moveAnchor(100, 500);
+    run(GLIDE_SECONDS / 3);
+    const before = step(run, transition);
+    // The visitor scrolls back: the original spot takes NEX again, mid-flight.
+    document.body.innerHTML = '<div data-stage-anchor="nex" id="home"></div>';
+    anchor.box = home;
+    anchor.version++;
+    window.dispatchEvent(new Event(NEX_ANCHOR_EVENT));
+    const after = step(run, transition);
+    // Velocity is continuous at the reversal (a spring keeps its momentum, then turns).
+    const change = Math.hypot(after.vx - before.vx, after.vy - before.vy);
+    expect(change).toBeLessThan(0.25 * Math.hypot(before.vx, before.vy));
+    run(4 * GLIDE_SECONDS);
+    expect(transition.placement.displayed).toEqual(original);
+  });
+
+  it("without Full Motion a new anchor places NEX at once", () => {
+    const { e, clock, transition, run } = rig();
+    clock.setProps(props({ motion: "reduced" }));
+    run(0.05);
+    moveAnchor(100, 500);
+    run(0.02);
+    expect(transition.placement.displayed).toEqual(placeNex(anchor.box, e, NEX_PARAMS.fov));
+  });
+
+  it("an anchor found while NEX isn't drawn yet doesn't glide: NEX appears there", () => {
+    const { e, clock, transition, run } = rig();
+    clock.setProps(props());
+    const segment = transition.placement.segment;
+    moveAnchor(100, 500);
+    run(0.05);
+    expect(transition.placement.segment).toBe(segment);
+    expect(transition.placement.displayed).toEqual(placeNex(anchor.box, e, NEX_PARAMS.fov));
+  });
+
+  it("attention: held while engaged, a pulse on activation, back to exactly 0 at rest", () => {
+    const { clock, transition, run } = rig();
+    clock.setProps(props());
+    run(1);
+    expect(transition.visibility.attention).toBe(0);
+
+    attention("hold");
+    run(4);
+    expect(transition.visibility.attention).toBeCloseTo(ATTENTION_HOLD, 2);
+    attention("pulse");
+    run(0.016);
+    expect(transition.visibility.attention).toBeGreaterThan(0.95);
+    attention("release");
+    run(6);
+    expect(transition.visibility.attention).toBe(0);
+  });
+
+  it("attention holds are independent: one ending never cancels another", () => {
+    const { clock, transition, run } = rig();
+    clock.setProps(props());
+    run(1);
+    attention("hold", "transmission"); // the introduction is typing
+    attention("hold", "focus"); // and the visitor tabs to NEX's launcher
+    run(4);
+    attention("release", "transmission"); // typing finishes
+    run(4);
+    expect(transition.visibility.attention).toBeCloseTo(ATTENTION_HOLD, 2); // focus still holds
+    attention("hold", "pointer");
+    attention("release", "pointer"); // the pointer passing over doesn't end the focus hold
+    run(4);
+    expect(transition.visibility.attention).toBeCloseTo(ATTENTION_HOLD, 2);
+    attention("release", "focus");
+    run(6);
+    expect(transition.visibility.attention).toBe(0);
+  });
+
+  it("a launcher that moves away with NEX's anchor ends its pointer and focus holds only", () => {
+    const { clock, transition, run } = rig();
+    clock.setProps(props());
+    run(1);
+    attention("hold", "pointer"); // hovering the opening's launcher...
+    moveAnchor(900, 560); // ...which unmounts as NEX docks (no pointerleave)
+    run(6);
+    expect(transition.visibility.attention).toBe(0);
+    attention("hold", "transmission");
+    moveAnchor(100, 500);
+    run(6);
+    expect(transition.visibility.attention).toBeCloseTo(ATTENTION_HOLD, 2);
+  });
+
+  it("attention stays 0 without Full Motion", () => {
+    const { clock, transition, run } = rig();
+    clock.setProps(props({ motion: "reduced" }));
+    attention("hold");
+    attention("pulse");
+    run(0.5);
+    expect(transition.visibility.attention).toBe(0);
+  });
+
+  it("removes its window listeners when disposed", () => {
+    const { e, clock, transition, run } = rig();
+    clock.setProps(props());
+    run(1);
+    clock.dispose();
+    vi.mocked(e.invalidate).mockClear();
+    attention("pulse");
+    window.dispatchEvent(new Event(NEX_ANCHOR_EVENT));
+    expect(e.invalidate).not.toHaveBeenCalled();
+    expect(transition.visibility.attention).toBe(0);
   });
 });

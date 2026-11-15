@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 import { stubDevice } from "./device";
 import { expect, test } from "./fixtures";
+import { MORPH_TEST_BUILD } from "./morph-build";
 
 /**
  * Device-specific agent viability and shader-failure paths (Milestone 2.4b.2 remediation; proposal
@@ -188,6 +189,9 @@ const toHome = (page: Page) => page.getByRole("link", { name: "Return to NEX" })
 test.beforeEach(async ({ page }) => {
   await stubDevice(page, { webgl2: true });
 });
+
+// Every scenario here draws the development-only TEST shape (`npm run build:morph-test`).
+test.skip(!MORPH_TEST_BUILD, "development-only TEST diagnostic: run `npm run build:morph-test`");
 
 test("a constrained device: NEX unsupported (poster, Stage running), TEST still draws, nothing NEX compiled", async ({
   page,

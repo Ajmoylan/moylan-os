@@ -7,11 +7,13 @@ import {
   LineSegments,
   Mesh,
   OneFactor,
+  Euler,
   PlaneGeometry,
   Points,
   Quaternion,
   ShaderMaterial,
   SphereGeometry,
+  Vector2,
   Vector3,
   type IUniform,
   type Object3D,
@@ -27,8 +29,23 @@ import type { Engine } from "../engine/Engine";
 import { Resources } from "../engine/resources";
 import { interactionUniforms, syncInteraction } from "../flow/interaction";
 import { drawCount } from "../performance/quality";
+import {
+  ATTENTION_GLOW,
+  CORE_LEAN_UNITS,
+  CORE_SPRING,
+  leanTarget,
+  lookTarget,
+  LOOK_SPRING,
+  PULSE,
+  pulseAt,
+  spring,
+  VITALITY,
+  type Look,
+  type Spring,
+} from "./look";
 import { NexMotion } from "./motion";
 import { NEX_PARAMS } from "./params";
+import { CAMERA_DISTANCE } from "./placement";
 import {
   nexAtmosphereFragment,
   nexBillboardVertex,
@@ -41,6 +58,7 @@ import {
   nexShellVertex,
   nexSolidFragment,
   NEX_GLOW_SHARE,
+  withPersonality,
 } from "./shaders";
 import { NEX_FIRST_RING, NEX_FRAMES } from "./shape";
 
@@ -165,6 +183,29 @@ export class NexAvatar implements AgentView {
   private readonly facing = new Quaternion();
   private readonly view = new Quaternion(...NEX_PARAMS.view);
   private readonly dir = new Vector3();
+  /** Launch sprint: NEX's sprung turn towards the cursor (exactly zero at rest). */
+  private readonly look: Look = { yaw: 0, pitch: 0 };
+  private readonly springs = {
+    yaw: { x: 0, v: 0 } as Spring,
+    pitch: { x: 0, v: 0 } as Spring,
+    leanX: { x: 0, v: 0 } as Spring,
+    leanY: { x: 0, v: 0 } as Spring,
+  };
+  /** The energy pulse: wavefront radius and strength (uPulse), and the glow's swell. */
+  private readonly pulse = { radius: 0, strength: 0, swell: 0 };
+  private readonly pulseUniform: IUniform<Vector2> = { value: new Vector2() };
+  private readonly lookAim: Look = { yaw: 0, pitch: 0 };
+  private readonly lookEuler = new Euler();
+  private readonly lookTurn = new Quaternion();
+  /** Launch sprint: the core's damped lean (screen space, 0 … 1) and its NEX-local shift. */
+  private readonly lean = { x: 0, y: 0 };
+  private readonly leanAim = { x: 0, y: 0 };
+  private readonly coreShift: IUniform<Vector3> = { value: new Vector3() };
+  private readonly inverse = new Quaternion();
+  /** The core's glow billboard and shell (they lean with the core particles). */
+  private readonly coreMeshes: Object3D[];
+  /** Personality enabled (Stage); off, NEX renders exactly its approved idle look. */
+  private readonly personal: boolean;
 
   /**
    * Transactional: every material, geometry, scene entry and listener is registered for release
@@ -201,7 +242,9 @@ export class NexAvatar implements AgentView {
             uOrbitFlow: { value: this.frames.flow },
           }
         : { uFrames: { value: this.frames.frames }, uOrbitFlow: { value: this.frames.flow } };
-      const pointVertex = texture ? nexPointVertexTexture : nexPointVertex;
+      this.personal = context.personality === true;
+      const approvedPoint = texture ? nexPointVertexTexture : nexPointVertex;
+      const pointVertex = this.personal ? withPersonality(approvedPoint) : approvedPoint;
       const lineVertex = texture ? nexLineVertexTexture : nexLineVertex;
       // Shared uniform objects: one write per frame updates every layer.
       this.common = {
@@ -219,6 +262,7 @@ export class NexAvatar implements AgentView {
         ...this.flow,
         uCoreRadius: { value: NEX_PARAMS.coreRadius },
         uProjScale: { value: 1000 },
+        ...(this.personal ? { uCoreShift: this.coreShift, uPulse: this.pulseUniform } : {}),
       };
       const material = (
         uniforms: Record<string, IUniform>,
@@ -263,13 +307,16 @@ export class NexAvatar implements AgentView {
         this.points.geometry.dispose();
         this.glowPoints.geometry.dispose();
       });
+      const shell = new Mesh(sphere, m.shell);
+      const glow = new Mesh(quad, m.glow);
+      this.coreMeshes = [shell, glow];
       const children: Object3D[] = [
         new Mesh(quad, m.atmosphere),
         new LineSegments(lineGeometry, m.lines),
         this.points,
         this.glowPoints,
-        new Mesh(sphere, m.shell),
-        new Mesh(quad, m.glow),
+        shell,
+        glow,
       ];
       for (const child of children) child.frustumCulled = false;
       this.root.add(...children);
@@ -402,7 +449,7 @@ export class NexAvatar implements AgentView {
     this.context.stage.dataset[key] = value;
   }
 
-  update(engine: Engine): void {
+  update(engine: Engine, delta = 0): void {
     if (!this.props) return;
     const root = this.root;
     // Built for a morph that hasn't started: not drawn yet.
@@ -432,7 +479,17 @@ export class NexAvatar implements AgentView {
     root.position.set(x, y, 0);
     root.scale.setScalar(scale);
     this.dir.copy(camera.position).sub(root.position).normalize();
-    root.quaternion.copy(this.facing.setFromUnitVectors(UNIT_Z, this.dir).multiply(this.view));
+    this.facing.setFromUnitVectors(UNIT_Z, this.dir);
+    // Launch sprint (personality): the rings turn towards the cursor, in the camera-facing frame,
+    // and the core leans towards it (Full Motion with pointer effects only; NEX's own role only).
+    // At rest both are exactly zero and skipped, so NEX's approved idle transform is unchanged.
+    if (this.personal) this.followCursor(engine, x, y, delta);
+    if (this.look.yaw !== 0 || this.look.pitch !== 0) {
+      this.lookEuler.set(this.look.pitch, this.look.yaw, 0);
+      this.facing.multiply(this.lookTurn.setFromEuler(this.lookEuler));
+    }
+    root.quaternion.copy(this.facing.multiply(this.view));
+    if (this.personal) this.leanCore();
 
     const u = this.common;
     const m = this.materials;
@@ -440,7 +497,11 @@ export class NexAvatar implements AgentView {
     u.uArrive!.value = arrival / ARRIVAL_SECONDS;
     u.uFade!.value = fade;
     u.uScale!.value = scale;
-    u.uBreath!.value = this.frames.breath;
+    // Breathing: the approved core scale, plus (personality) the vitality amplitude on the same
+    // phase, so the pulse is visible; both are 1 at the cycle's rest phase.
+    const phase = this.frames.breathPhase;
+    const vital = this.personal ? 1 : 0;
+    u.uBreath!.value = vital ? this.frames.breath + VITALITY.breath * phase : this.frames.breath;
     // The glow layer fades in once the arrival is complete (TransitionClock's post-arrival fade).
     m.glowPoints.uniforms.uGlowFade!.value = formed;
     if (this.role === "morph") {
@@ -452,10 +513,25 @@ export class NexAvatar implements AgentView {
       u.uFade!.value = fade * encodedPresence(this.presence);
       if (this.formedOverride) u.uArrive!.value = 1;
     }
-    const glowIntensity = 0.9 + 0.2 * this.frames.breathPhase;
-    m.glow.uniforms.uIntensity!.value = glowIntensity;
-    m.atmosphere.uniforms.uIntensity!.value = glowIntensity;
-    m.shell.uniforms.uIntensity!.value = (0.45 + 0.15 * this.frames.breathPhase) * 0.8;
+    const glowIntensity = 0.9 + 0.2 * phase;
+    if (this.personal) {
+      // Personality: the breathing made visible (vitality, same phase), the core's energy pulse
+      // (Full Motion only; it starts once NEX has formed) and the visitor's attention; all 0 at rest.
+      const live = this.props.motion === "full" ? formed : 0;
+      pulseAt(time, this.pulse);
+      this.pulseUniform.value.set(this.pulse.radius, this.pulse.strength * live);
+      const attention = this.context.visibility.attention;
+      const extra = ATTENTION_GLOW * attention + PULSE.glow * this.pulse.swell * live;
+      m.glow.uniforms.uIntensity!.value = glowIntensity + VITALITY.glow * phase + extra;
+      m.atmosphere.uniforms.uIntensity!.value = glowIntensity + VITALITY.atmosphere * phase + extra;
+      m.shell.uniforms.uIntensity!.value =
+        (0.45 + 0.15 * phase + VITALITY.shell * phase + 0.5 * extra) * 0.8;
+    } else {
+      // The approved breathing glow, exactly.
+      m.glow.uniforms.uIntensity!.value = glowIntensity;
+      m.atmosphere.uniforms.uIntensity!.value = glowIntensity;
+      m.shell.uniforms.uIntensity!.value = (0.45 + 0.15 * this.frames.breathPhase) * 0.8;
+    }
     this.pointsUniforms.uProjScale.value =
       (engine.height * engine.dpr) / (2 * Math.tan((camera.fov * Math.PI) / 360));
 
@@ -463,6 +539,51 @@ export class NexAvatar implements AgentView {
     // reduced or off motion its mode is "none", so every pointer uniform is zeroed.
     syncInteraction(this.flow, this.context.interaction, engine.width / Math.max(1, engine.height));
     this.publish("nexFlow", this.context.interaction.mode);
+  }
+
+  /**
+   * Advances the damped ring turn and core lean towards the cursor (or back to rest) by `delta`
+   * seconds.
+   */
+  private followCursor(engine: Engine, x: number, y: number, delta: number): void {
+    const { interaction } = this.context;
+    const aim = this.lookAim;
+    const lean = this.leanAim;
+    if (this.role === "none" && interaction.mode !== "none" && interaction.cursorActive) {
+      // NEX's centre in NDC: world (x, y) on the z = 0 plane, CAMERA_DISTANCE from the camera.
+      const aspect = engine.width / Math.max(1, engine.height);
+      const halfHeight = CAMERA_DISTANCE * Math.tan((engine.camera.fov * Math.PI) / 360);
+      const nx = x / (halfHeight * aspect);
+      const ny = y / halfHeight;
+      const { x: cx, y: cy } = interaction.cursor;
+      lookTarget(cx, cy, nx, ny, aspect, aim);
+      leanTarget(cx, cy, nx, ny, aspect, lean);
+    } else {
+      aim.yaw = aim.pitch = 0;
+      lean.x = lean.y = 0;
+    }
+    const dt = Math.min(Math.max(delta, 0), 0.1);
+    const s = this.springs;
+    this.look.yaw = spring(s.yaw, aim.yaw, dt, LOOK_SPRING);
+    this.look.pitch = spring(s.pitch, aim.pitch, dt, LOOK_SPRING);
+    this.lean.x = spring(s.leanX, lean.x, dt, CORE_SPRING);
+    this.lean.y = spring(s.leanY, lean.y, dt, CORE_SPRING);
+  }
+
+  /**
+   * The core's lean as a NEX-local shift: the screen-space lean (x right, y up; the camera looks
+   * down −z) turned into NEX's frame, so the core moves towards the cursor on screen however the
+   * rings are turned. The core particles take it in their shader, the glow and shell as position.
+   */
+  private leanCore(): void {
+    const shift = this.coreShift.value;
+    if (this.lean.x === 0 && this.lean.y === 0) shift.set(0, 0, 0);
+    else {
+      shift
+        .set(this.lean.x * CORE_LEAN_UNITS, this.lean.y * CORE_LEAN_UNITS, 0)
+        .applyQuaternion(this.inverse.copy(this.root.quaternion).invert());
+    }
+    for (const mesh of this.coreMeshes) mesh.position.copy(shift);
   }
 
   dispose(): void {

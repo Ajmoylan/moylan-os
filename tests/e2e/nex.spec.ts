@@ -133,7 +133,7 @@ test.describe("with WebGL2 and full motion", () => {
     await expect(stage(page)).toHaveAttribute("data-nex-state", "visible");
     // Tiers 2 (touch) and 3 (desktop) both draw the approved density; tier 3 adds the glow layer.
     await expect(stage(page)).toHaveAttribute("data-nex-particles", "30000");
-    await expect(page.locator("canvas")).toHaveCount(1);
+    await expect(page.locator("canvas:not([data-nex-mirror])")).toHaveCount(1);
     await expect(poster(page)).toHaveCSS("opacity", "0");
     // The poster stays in the accessibility tree as NEX's text equivalent; the canvas is hidden.
     await expect(page.getByRole("img", { name: /NEX, the MOYLAN\/\/OS host/ })).toHaveCount(1);
@@ -196,7 +196,9 @@ test.describe("with WebGL2 and full motion", () => {
     await expect(stage(page)).toHaveAttribute("data-nex-state", "visible");
   });
 
-  test("NEX leaves with its page and returns when the visitor comes back", async ({ page }) => {
+  test("NEX accompanies the visitor to a page with a NEX slot (wide screens) and returns home", async ({
+    page,
+  }) => {
     await open(page);
     await expect(stage(page)).toHaveAttribute("data-nex-state", "visible");
     await page
@@ -204,7 +206,13 @@ test.describe("with WebGL2 and full motion", () => {
       .getByRole("link", { name: "Engineering" })
       .click();
     await expect(stage(page)).toHaveAttribute("data-agent", "forge");
-    await expect(stage(page)).toHaveAttribute("data-nex-state", "hidden");
+    // Launch sprint (companion mode): NEX accompanies the visitor: beside the heading on wide
+    // screens, in the companion dock on narrow ones.
+    await expect(stage(page)).toHaveAttribute("data-nex-state", "visible");
+    await expect(page.locator('[data-stage-anchor="nex"]')).toHaveAttribute(
+      "data-nex-slot",
+      page.viewportSize()!.width >= 1024 ? "page" : "dock",
+    );
 
     await page.goBack();
     await expect(stage(page)).toHaveAttribute("data-agent", "nex");

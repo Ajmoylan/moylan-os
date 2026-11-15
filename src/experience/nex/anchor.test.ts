@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NEX_PARAMS } from "./params";
 import { AnchorTracker } from "./anchor";
-import { placeNex, type Placement } from "./placement";
+import {
+  CONTAIN_MARGIN_PX,
+  CONTAIN_TOP_PX,
+  FILL,
+  placeNex,
+  REACH,
+  type Placement,
+} from "./placement";
 
 /**
  * Regression for the Milestone 2.3 review: NEX read the anchor's layout with
@@ -58,6 +65,22 @@ describe("AnchorTracker", () => {
     for (let frame = 0; frame < 120; frame++) tracker.read();
     expect(element.getBoundingClientRect).toHaveBeenCalledTimes(1);
     expect(tracker.box).toMatchObject({ ...rect, present: true });
+    tracker.detach();
+  });
+
+  it("an anchor that isn't laid out (display: none) is absent, measured once until it is again", () => {
+    const tracker = new AnchorTracker(window, () => {});
+    tracker.attach();
+    rect = { left: 0, top: 0, width: 0, height: 0 };
+    const element = anchorElement();
+    tracker.setElement(element);
+    for (let frame = 0; frame < 60; frame++) tracker.read();
+    expect(element.getBoundingClientRect).toHaveBeenCalledTimes(1);
+    expect(tracker.box.present).toBe(false);
+    // Laid out again (e.g. the viewport widened): its ResizeObserver reports it.
+    rect = { left: 600, top: 200, width: 400, height: 400 };
+    observers[0]!.callback();
+    expect(tracker.read()).toMatchObject({ ...rect, present: true });
     tracker.detach();
   });
 
@@ -244,5 +267,96 @@ describe("placement from the cached box", () => {
     expect(after.x).toBeCloseTo(x);
     expect(after.y).toBeGreaterThan(y); // scrolled up the page: NEX moves up
     expect(after.scale).toBeCloseTo(scale);
+  });
+});
+
+describe("containment inside the viewport (launch sprint)", () => {
+  const viewport = { width: 1280, height: 800 };
+  const fov = NEX_PARAMS.fov;
+  const unitsPerPx = (2 * 7.8 * Math.tan((fov * Math.PI) / 360)) / viewport.height;
+  const screenY = (p: Placement) => viewport.height / 2 - p.y / unitsPerPx;
+  const box = (top: number, contain: boolean) => ({
+    left: 900,
+    top,
+    width: 300,
+    height: 300,
+    contain,
+  });
+  const reach = 150 * FILL * REACH;
+
+  it("keeps the whole footprint below the header and inside the viewport while scrolling", () => {
+    let previous: number | null = null;
+    for (let top = 600; top >= -900; top -= 7) {
+      const p = placeNex(box(top, true), viewport, fov);
+      const y = screenY(p);
+      expect(y - reach).toBeGreaterThanOrEqual(CONTAIN_TOP_PX + CONTAIN_MARGIN_PX - 1e-6);
+      expect(y + reach).toBeLessThanOrEqual(viewport.height - CONTAIN_MARGIN_PX + 1e-6);
+      expect(p.onScreen).toBe(true);
+      // Continuous: a 7 px scroll never moves NEX by more than 7 px.
+      if (previous !== null) expect(Math.abs(y - previous)).toBeLessThanOrEqual(7 + 1e-6);
+      previous = y;
+    }
+  });
+
+  it("an uncontained anchor scrolls NEX away as before", () => {
+    const p = placeNex(box(-900, false), viewport, fov);
+    expect(p.onScreen).toBe(false);
+    const contained = placeNex(box(200, true), viewport, fov);
+    expect(contained).toEqual(placeNex(box(200, false), viewport, fov)); // in view: untouched
+  });
+
+  it("NEX larger than the space is centred in it rather than jumping", () => {
+    const short = { width: 1280, height: 500 };
+    const big = { left: 700, top: 0, width: 500, height: 500, contain: true };
+    const a = placeNex({ ...big, top: -300 }, short, fov);
+    const b = placeNex({ ...big, top: 300 }, short, fov);
+    expect(a.y).toBe(b.y);
+  });
+
+  it("with browser toolbars shown, keeps NEX above them (the visible viewport, not the stage's 100lvh)", () => {
+    // iPad Safari: the stage is 800 px tall (large viewport); toolbars leave 720 px visible.
+    const visible = 720;
+    for (let top = 600; top >= -900; top -= 50) {
+      const y = screenY(placeNex({ ...box(top, true), viewHeight: visible }, viewport, fov));
+      expect(y + reach).toBeLessThanOrEqual(visible - CONTAIN_MARGIN_PX + 1e-6);
+    }
+    // No toolbar (or no measurement): the stage's own height, exactly as before.
+    expect(placeNex({ ...box(600, true), viewHeight: 0 }, viewport, fov)).toEqual(
+      placeNex(box(600, true), viewport, fov),
+    );
+    expect(placeNex({ ...box(600, true), viewHeight: 900 }, viewport, fov)).toEqual(
+      placeNex(box(600, true), viewport, fov),
+    );
+  });
+
+  it("the tracker records the visible viewport's height, re-measured when toolbars change it", () => {
+    const tracker = new AnchorTracker(window, () => {});
+    tracker.attach();
+    const height = vi.spyOn(window, "innerHeight", "get").mockReturnValue(720);
+    tracker.setElement(anchorElement());
+    const first = tracker.version;
+    expect(tracker.read().viewHeight).toBe(720);
+    height.mockReturnValue(780); // the toolbar collapses: a window resize
+    window.dispatchEvent(new Event("resize"));
+    expect(tracker.read().viewHeight).toBe(780);
+    expect(tracker.version).toBeGreaterThan(first);
+    tracker.detach();
+  });
+
+  it("the tracker reads the anchor's containment media query when it measures", () => {
+    const tracker = new AnchorTracker(window, () => {});
+    tracker.attach();
+    const element = anchorElement();
+    element.setAttribute("data-nex-contain", "(min-width: 64rem)");
+    const matchMedia = vi.fn(() => ({ matches: true }) as MediaQueryList);
+    vi.stubGlobal("matchMedia", matchMedia);
+    window.matchMedia = matchMedia;
+    tracker.setElement(element);
+    expect(tracker.read().contain).toBe(true);
+    expect(matchMedia).toHaveBeenCalledWith("(min-width: 64rem)");
+    matchMedia.mockReturnValue({ matches: false } as MediaQueryList);
+    window.dispatchEvent(new Event("resize"));
+    expect(tracker.read().contain).toBe(false);
+    tracker.detach();
   });
 });

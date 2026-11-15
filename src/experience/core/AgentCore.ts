@@ -55,6 +55,8 @@ export interface AgentCoreContext {
    * generation). Absent: AgentCore assesses this renderer itself (unit tests).
    */
   capabilities?: AgentCapabilities;
+  /** Launch sprint: lend the views their interactive personality (`AgentViewContext`). */
+  personality?: boolean;
 }
 
 /** Stage data attributes AgentCore publishes (written only when their value changes). */
@@ -170,7 +172,7 @@ export class AgentCore implements FrameLayer {
         this.programs.dispose();
       });
       const { source, state } = context.transition;
-      if (!definitionFor(source)) throw new Error(`No WebGL definition for agent "${source}"`);
+      if (!definitionFor(source)) throw new Error(`No definition: ${source}`);
       if (state !== "unsupported") this.active = this.buildSlot(source);
     } catch (error) {
       this.disposed = true;
@@ -514,7 +516,7 @@ export class AgentCore implements FrameLayer {
   private createSlot(agent: AgentId, orbitTransport: OrbitTransport): ViewSlot {
     const { context, engine } = this;
     const definition = definitionFor(agent);
-    if (!definition) throw new Error(`No WebGL definition for agent "${agent}"`);
+    if (!definition) throw new Error(`No definition: ${agent}`);
     // Each view has its own colours (two agents are drawn at once during a morph).
     const colours: AgentColours = {
       deep: new Vector3(),
@@ -530,6 +532,7 @@ export class AgentCore implements FrameLayer {
       orbitTransport,
       visibility: context.transition.visibility,
       placement: context.transition.placement,
+      personality: context.personality,
     });
     try {
       if (this.props) view.setProps(this.props);

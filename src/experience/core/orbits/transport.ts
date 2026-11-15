@@ -33,7 +33,7 @@ export function selectOrbitTransport(
   }
   if (!supported.idle.includes("uniforms")) {
     // Unsupported agents (proposal §6.6) arrive with the specialists; NEX always has uniforms.
-    throw new Error("No viable orbit transport for this agent");
+    throw new Error("No viable orbit transport");
   }
   return "uniforms";
 }

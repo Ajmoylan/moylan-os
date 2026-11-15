@@ -40,6 +40,7 @@ import {
   type StageTransition,
 } from "./transition/StageTransition";
 import { TransitionClock } from "./transition/TransitionClock";
+import { CompanionMirror } from "./nex/mirror";
 
 export interface StageProps {
   /** Agent hosting the current URL (from the route manifest). */
@@ -56,12 +57,23 @@ export interface StageProps {
 }
 
 /**
- * The first-morph diagnostic switch (Milestone 2.4b.2): `?morph=test` in the URL the stage first
- * loads with lazily loads the TEST shape and draws it on FORGE's route (`/engineering`), so the
- * morph runs on real navigation. Read once per page load; never stored (no cookie, no storage), so
- * an ordinary visit never loads or draws TEST. To be removed before public launch.
+ * Development-only build flag for the first-morph diagnostic: on in the dev server and in builds
+ * made with `VITE_MORPH_TEST=1` (`npm run build:morph-test`, used by the morph e2e tests). A
+ * build-time constant, so production builds compile the switch out entirely: no TEST chunk, and
+ * `?morph=test` does nothing. `scripts/postbuild.mjs` fails a CI build that contains TEST without
+ * the flag.
+ */
+export const MORPH_TEST_BUILD: boolean =
+  import.meta.env.DEV || import.meta.env.VITE_MORPH_TEST === "1";
+
+/**
+ * The first-morph diagnostic switch (Milestone 2.4b.2), development builds only: `?morph=test` in
+ * the URL the stage first loads with lazily loads the TEST shape and draws it on FORGE's route
+ * (`/engineering`), so the morph runs on real navigation. Read once per page load; never stored
+ * (no cookie, no storage), so an ordinary visit never loads or draws TEST.
  */
 export const MORPH_DIAGNOSTIC =
+  MORPH_TEST_BUILD &&
   typeof window !== "undefined" &&
   new URLSearchParams(window.location.search).get("morph") === "test";
 
@@ -103,13 +115,15 @@ type LifecycleState = "starting" | "running" | "lost";
 
 /**
  * The stage's layers. The engine runs them in phase order (simulate: flow, transition clock;
- * update: ambient field, AgentCore), and within a phase in the order they are added.
+ * update: ambient field, AgentCore, companion mirror), and within a phase in the order they are
+ * added. The mirror also runs right after the scene is drawn (`afterRender`).
  */
 export interface StageLayers {
   flow: FlowSimulation;
   clock: TransitionClock;
   ambient: AmbientField;
   core: AgentCore;
+  mirror: CompanionMirror;
 }
 
 /** Stage-lifetime state shared by the layers (ADR-007): it survives context restores. */
@@ -156,10 +170,15 @@ export function createLayers(engine: Engine, shared: StageShared): StageLayers {
       orbitPreference,
       epochs,
       capabilities,
+      // Launch sprint: NEX's interactive personality (only ever active with Full Motion).
+      personality: true,
     });
     created.push(core);
-    for (const layer of [flow, clock, ambient, core]) engine.add(layer);
-    return { flow, clock, ambient, core };
+    // Launch sprint: keeps the docked NEX visible above the page (a copy of the dock's region).
+    const mirror = new CompanionMirror(transition.placement);
+    created.push(mirror);
+    for (const layer of [flow, clock, ambient, core, mirror]) engine.add(layer);
+    return { flow, clock, ambient, core, mirror };
   } catch (error) {
     for (const layer of created.reverse()) {
       try {
@@ -173,7 +192,7 @@ export function createLayers(engine: Engine, shared: StageShared): StageLayers {
 }
 
 function disposeLayers(engine: Engine, layers: StageLayers): void {
-  for (const layer of [layers.core, layers.ambient, layers.clock, layers.flow]) {
+  for (const layer of [layers.mirror, layers.core, layers.ambient, layers.clock, layers.flow]) {
     engine.remove(layer);
     layer.dispose();
   }
@@ -228,7 +247,7 @@ export default function Stage({ agent, plan, path = "/", onUnavailable }: StageP
   /** With the diagnostic switch, the layers wait for the TEST chunk (it registers TEST first). */
   const [diagnosticReady, setDiagnosticReady] = useState(!MORPH_DIAGNOSTIC);
   useEffect(() => {
-    if (!MORPH_DIAGNOSTIC) return;
+    if (!MORPH_TEST_BUILD || !MORPH_DIAGNOSTIC) return;
     let live = true;
     import("./agents/test")
       .then(({ testDefinition }) => registerDiagnosticDefinition(testDefinition))
@@ -244,7 +263,9 @@ export default function Stage({ agent, plan, path = "/", onUnavailable }: StageP
   }, []);
   const [lifecycle, setLifecycle] = useState<LifecycleState>("starting");
   const [quality, setQuality] = useState<Quality>(FULL_QUALITY);
-  const onQualityStep = useCallback((next: Quality) => setQuality((q) => lowerOf(q, next)), []);
+  const onQualityStep = useCallback((next: Quality) => {
+    setQuality((q) => lowerOf(q, next));
+  }, []);
   // Backing-pixel limit: the stage fills the viewport. Floored to coarse steps, so resizing a
   // window re-renders only when the limit actually moves.
   const pixelLimit = useSyncExternalStore(

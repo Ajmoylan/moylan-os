@@ -1,10 +1,18 @@
-import { BufferGeometry, PerspectiveCamera, Scene, ShaderMaterial } from "three";
+import {
+  BufferGeometry,
+  PerspectiveCamera,
+  Scene,
+  ShaderMaterial,
+  type Mesh,
+  type Vector3,
+} from "three";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ShapeModule from "./shape";
 import { nexPalette, rgb } from "../ambient/config";
 import type { Engine } from "../engine/Engine";
 import { createInteraction } from "../flow/interaction";
 import { createTransition } from "../transition/StageTransition";
+import { CORE_LEAN_UNITS } from "./look";
 import { NexAvatar, type NexAvatarProps } from "./NexAvatar";
 import { generateNexShape } from "./shape";
 
@@ -47,10 +55,13 @@ const props = (overrides: Partial<NexAvatarProps> = {}): NexAvatarProps => ({
   ...overrides,
 });
 
-const nex = () =>
+let interaction = createInteraction(0.1);
+
+const nex = (personality = false) =>
   new NexAvatar(engine, {
+    personality,
     stage,
-    interaction: createInteraction(0.1),
+    interaction,
     colours: {
       deep: rgb(nexPalette.base),
       accent: rgb(nexPalette.accent),
@@ -67,6 +78,7 @@ let transition = createTransition("nex");
 beforeEach(() => {
   faults.shape = false;
   transition = createTransition("nex");
+  interaction = createInteraction(0.1);
   scene = new Scene();
   stage = document.createElement("div");
   engine = {
@@ -164,5 +176,148 @@ describe("NexAvatar layer", () => {
     expect(scene.children).toHaveLength(0);
     expect(stage.dataset.nexParticles).toBeUndefined();
     expect(n.setProps(props({ particles: 2_400 }))).toBe(false);
+  });
+});
+
+describe("NexAvatar personality (launch sprint)", () => {
+  const visibleFrame = () => {
+    Object.assign(transition.visibility, { fade: 1, arrival: 2.4, formed: 1, time: 0 });
+    Object.assign(transition.placement.displayed, { x: 0, y: 0, scale: 0.8, onScreen: true });
+  };
+  const sized = () => Object.assign(engine, { width: 1200, height: 800, dpr: 1 });
+  const parts = () => {
+    const root = scene.children[0]!;
+    const [atmosphere, , points, , shell, glow] = root.children as Mesh<
+      BufferGeometry,
+      ShaderMaterial
+    >[];
+    return { root, atmosphere: atmosphere!, points: points!, shell: shell!, glow: glow! };
+  };
+  const pointer = (x: number, y: number) => {
+    interaction.mode = "analytic";
+    interaction.cursorActive = true;
+    interaction.cursor.set(x, y);
+  };
+
+  it("off (the default): NEX's approved shader, no core shift, no turn, the approved glow", () => {
+    sized();
+    const n = nex();
+    n.setProps(props());
+    visibleFrame();
+    pointer(0.9, 0.6);
+    const { root, points, glow } = parts();
+    n.update(engine, 0.016);
+    const rest = root.quaternion.clone();
+    for (let i = 0; i < 60; i++) n.update(engine, 1 / 60);
+    expect(root.quaternion.toArray()).toEqual(rest.toArray());
+    expect(points.material.vertexShader).not.toContain("uCoreShift");
+    expect(points.material.uniforms.uCoreShift).toBeUndefined();
+    expect(glow.position.toArray()).toEqual([0, 0, 0]);
+  });
+
+  it("the rings turn noticeably towards an active cursor, then return exactly to rest", () => {
+    sized();
+    const n = nex(true);
+    n.setProps(props());
+    visibleFrame();
+    const { root } = parts();
+    n.update(engine, 0.016);
+    const rest = root.quaternion.clone();
+    pointer(0.9, 0.6);
+    for (let i = 0; i < 90; i++) n.update(engine, 1 / 60);
+    const turned = root.quaternion.angleTo(rest);
+    expect(turned).toBeGreaterThan(0.45); // > 25°: clearly noticeable
+    expect(turned).toBeLessThan(0.75); // bounded (yaw 0.56 and pitch 0.38 at most)
+    // Smooth: no single frame turns by more than a few degrees.
+    interaction.cursor.set(-0.9, -0.6);
+    let previous = root.quaternion.clone();
+    for (let i = 0; i < 30; i++) {
+      n.update(engine, 1 / 60);
+      expect(root.quaternion.angleTo(previous)).toBeLessThan(0.08); // < 4.6° a frame
+      previous = root.quaternion.clone();
+    }
+    interaction.cursorActive = false;
+    for (let i = 0; i < 600; i++) n.update(engine, 1 / 60);
+    expect(root.quaternion.toArray()).toEqual(rest.toArray());
+  });
+
+  it("the core leans towards the cursor on screen, independently of the rings, then recentres", () => {
+    sized();
+    const n = nex(true);
+    n.setProps(props());
+    visibleFrame();
+    const { root, points, shell, glow } = parts();
+    n.update(engine, 0.016);
+    pointer(0.9, 0); // to the right of NEX
+    for (let i = 0; i < 120; i++) n.update(engine, 1 / 60);
+    const shift = points.material.uniforms.uCoreShift!.value as Vector3;
+    expect(points.material.vertexShader).toContain("target += uCoreShift");
+    // In world space (NEX's turn applied) the lean points right, within CORE_LEAN of the radius.
+    const world = shift.clone().applyQuaternion(root.quaternion);
+    expect(world.x).toBeGreaterThan(0.6 * CORE_LEAN_UNITS);
+    expect(world.length()).toBeLessThanOrEqual(CORE_LEAN_UNITS + 1e-9);
+    expect(Math.abs(world.y)).toBeLessThan(0.05 * CORE_LEAN_UNITS);
+    expect(glow.position.toArray()).toEqual(shift.toArray());
+    expect(shell.position.toArray()).toEqual(shift.toArray());
+    interaction.cursorActive = false;
+    for (let i = 0; i < 600; i++) n.update(engine, 1 / 60);
+    expect(shift.toArray()).toEqual([0, 0, 0]);
+    expect(glow.position.toArray()).toEqual([0, 0, 0]);
+  });
+
+  it("no turn or lean without pointer effects (Reduced or Off Motion: interaction mode none)", () => {
+    sized();
+    const n = nex(true);
+    n.setProps(props());
+    visibleFrame();
+    const { root, points } = parts();
+    n.update(engine, 0.016);
+    const rest = root.quaternion.clone();
+    pointer(0.9, 0.6);
+    interaction.mode = "none";
+    for (let i = 0; i < 60; i++) n.update(engine, 1 / 60);
+    expect(root.quaternion.toArray()).toEqual(rest.toArray());
+    expect((points.material.uniforms.uCoreShift!.value as Vector3).toArray()).toEqual([0, 0, 0]);
+  });
+
+  it("adds no GPU resources: the same materials and geometries, all released on dispose", () => {
+    const n = nex(true);
+    n.setProps(props());
+    expect(scene.children[0]!.children).toHaveLength(6);
+    n.dispose();
+    n.dispose();
+    expect(materialDisposals).toHaveBeenCalledTimes(MATERIALS);
+    expect(geometryDisposals).toHaveBeenCalledTimes(GEOMETRIES + 2);
+    expect(scene.children).toHaveLength(0);
+  });
+
+  it("vitality: the breathing pulse is larger than approved mid-cycle, identical at rest", () => {
+    sized();
+    const approved = nex();
+    approved.setProps(props());
+    const vital = nex(true);
+    vital.setProps(props());
+    const [a, v] = scene.children.map(
+      (root) => root.children as Mesh<BufferGeometry, ShaderMaterial>[],
+    );
+    const intensities = (children: Mesh<BufferGeometry, ShaderMaterial>[]) => ({
+      breath: children[2]!.material.uniforms.uBreath!.value as number,
+      glow: children[5]!.material.uniforms.uIntensity!.value as number,
+      atmosphere: children[0]!.material.uniforms.uIntensity!.value as number,
+      shell: children[4]!.material.uniforms.uIntensity!.value as number,
+    });
+    visibleFrame();
+    approved.update(engine, 0.016);
+    vital.update(engine, 0.016);
+    expect(intensities(v!)).toEqual(intensities(a!)); // time 0: the cycle's rest phase
+    transition.visibility.time = 7.4792 / 2; // the cycle's peak
+    approved.update(engine, 0.016);
+    vital.update(engine, 0.016);
+    const peakA = intensities(a!);
+    const peakV = intensities(v!);
+    expect(peakV.breath).toBeCloseTo(peakA.breath + 0.045, 6);
+    expect(peakV.glow).toBeCloseTo(peakA.glow + 0.22, 6);
+    expect(peakV.atmosphere).toBeCloseTo(peakA.atmosphere + 0.5, 6);
+    expect(peakV.shell).toBeGreaterThan(peakA.shell);
   });
 });

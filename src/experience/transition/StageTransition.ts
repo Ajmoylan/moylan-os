@@ -29,6 +29,11 @@ export interface AgentVisibility {
   formed: number;
   /** The agent's idle animation time (seconds × the agent's pace). */
   time: number;
+  /**
+   * 0 … 1: the visitor's engagement with the agent (launch sprint: a held glow while the pointer or
+   * focus is on NEX's launcher, a brief pulse on activation). Always 0 without Full Motion.
+   */
+  attention: number;
 }
 
 /** Where the drawn agent is, plus the segment it is interpolating along (morphs only). */
@@ -42,6 +47,11 @@ export interface StagePlacement {
   progress: number;
   /** Increments whenever a new placement segment starts (diagnostics and tests). */
   segment: number;
+  /**
+   * Launch sprint: the drawn agent is gliding between anchors (not yet settled where it is going).
+   * Read by the companion mirror, which shows NEX in the dock only once he has arrived.
+   */
+  gliding: boolean;
 }
 
 /**
@@ -93,7 +103,7 @@ export function createMorphReport(): MorphReport {
 /** Writes `agent`'s registry palette into the shared colour values (no allocation kept). */
 export function writePalette(colours: AgentColours, agent: StageAgent): void {
   const definition = definitionFor(agent);
-  if (!definition) throw new Error(`No WebGL definition for agent "${agent}"`);
+  if (!definition) throw new Error(`No definition: ${agent}`);
   const palette = definition.palette
     ? definition.palette()
     : registryPalette(agent as AgentId, definition.hotOverride);
@@ -110,6 +120,7 @@ export function resetVisibility(visibility: AgentVisibility): void {
   visibility.arrival = 0;
   visibility.formed = 0;
   visibility.time = 0;
+  visibility.attention = 0;
 }
 
 export function createTransition(agent: StageAgent = "nex"): StageTransition {
@@ -126,13 +137,14 @@ export function createTransition(agent: StageAgent = "nex"): StageTransition {
     request: 0,
     issued: 0,
     palette,
-    visibility: { fade: 0, arrival: 0, formed: 0, time: 0 },
+    visibility: { fade: 0, arrival: 0, formed: 0, time: 0, attention: 0 },
     placement: {
       displayed: placement(),
       from: placement(),
       to: placement(),
       progress: 0,
       segment: 0,
+      gliding: false,
     },
     generation: 0,
   };

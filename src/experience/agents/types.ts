@@ -79,6 +79,12 @@ export interface AgentViewContext {
    */
   visibility: Readonly<AgentVisibility>;
   placement: Readonly<StagePlacement>;
+  /**
+   * Launch sprint: the agent's interactive personality (NEX: rings that turn towards the cursor, a
+   * leaning core, attention and a visible breathing pulse). Off by default, where a view renders
+   * exactly its approved idle look (the 2ceeff8 oracle); the Stage turns it on.
+   */
+  personality?: boolean;
 }
 
 /**

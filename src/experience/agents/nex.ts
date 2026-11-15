@@ -17,8 +17,9 @@ export const nexDefinition: AgentRenderDefinition = {
   // Point program vertex-uniform vectors, measured with getActiveUniform: uniform transport 112
   // (`uFrames[21]` mat3 = 63, `uOrbitFlow[21]` = 21; inside the WebGL2 guarantee of 256 on every
   // device), texture transport 49 plus one sampler: the matrices move to the table, the 21 flow
-  // speeds stay uniforms (Milestone 2.4b.1b).
-  transports: { idle: ["uniforms", "texture"], uniformVectors: { uniforms: 112, texture: 49 } },
+  // speeds stay uniforms (Milestone 2.4b.1b). Declared +2 for the launch sprint's personality
+  // program (`uCoreShift` vec3 and `uPulse` vec2, one vector each), the larger of the variants.
+  transports: { idle: ["uniforms", "texture"], uniformVectors: { uniforms: 114, texture: 51 } },
   hotOverride: NEX_HOT,
   // The approved Milestone 2.3 values, applied by TransitionClock since 2.4b.2.
   timing: { arrival: ARRIVAL_SECONDS, fade: FADE_SECONDS, pace: NEX_PACE },

@@ -1,6 +1,6 @@
 import { Link } from "react-router";
 import { agents, specialists, type AgentDefinition } from "~/agents/registry";
-import { AgentIcon } from "~/components/ui/AgentIcon";
+import { NexSlot } from "~/components/nex/NexSlot";
 import { AgentTag } from "~/components/ui/AgentTag";
 import { Container, DevelopmentNotice } from "~/components/ui/PageIntro";
 import { PathwayCard } from "~/components/ui/PathwayCard";
@@ -43,9 +43,12 @@ export function AgentEnvironment({ agent }: { agent: AgentDefinition }) {
               <figcaption className="mt-3 os-label">{agent.name}</figcaption>
             </figure>
           </div>
-          <div className="os-panel os-brackets hidden aspect-square items-center justify-center lg:flex">
-            <AgentIcon id={agent.id} className="size-28 text-(--accent) opacity-80" />
-          </div>
+          {/* NEX, the host, accompanies the visitor into each environment (launch sprint). */}
+          <NexSlot
+            id="page"
+            poster
+            className="os-brackets hidden aspect-square w-full p-6 lg:block"
+          />
         </section>
 
         <p className="max-w-2xl text-lg leading-relaxed text-text-muted">{agent.summary}</p>

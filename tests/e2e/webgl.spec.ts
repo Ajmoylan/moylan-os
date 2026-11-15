@@ -119,6 +119,10 @@ test.describe("with WebGL2 and full motion", () => {
     test.skip(isMobile, "mouse movement");
     await open(page);
     await expect(stage(page)).toHaveAttribute("data-stage-state", "running");
+    // NEX's opening message types itself out (its own DOM updates); measure once it is complete.
+    await expect(page.locator(".nex-tx")).toHaveAttribute("data-state", "done", {
+      timeout: 10_000,
+    });
     await page.evaluate(() => {
       const w = window as unknown as { __mutations: string[] };
       w.__mutations = [];

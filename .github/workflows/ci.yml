@@ -61,6 +61,18 @@ jobs:
       - name: End-to-end, accessibility and security-header tests
         run: npm run test:e2e
 
+      # The first-morph TEST diagnostic is compiled out of production builds (the e2e run above
+      # checks `?morph=test` is inert there). Rebuild with the development-only flag to exercise
+      # the real GPU morph pipeline. This build is never deployed.
+      - name: Build with the development-only morph diagnostic
+        run: npm run build:morph-test
+
+      - name: Morph and viability end-to-end tests (development-only TEST shape)
+        # Required: without the TEST shape in the build these tests fail, never all skip.
+        env:
+          MORPH_TEST_REQUIRED: "1"
+        run: npm run test:e2e:morph
+
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

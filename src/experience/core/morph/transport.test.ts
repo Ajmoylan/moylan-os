@@ -26,21 +26,21 @@ const query = (
 
 describe("resolveMorphTransport", () => {
   it("prefers NEX's idle transport when the pair fits with 32 vectors of headroom", () => {
-    const fits = query(256); // 112 + 22 + 2 = 136 ≤ 224
+    const fits = query(256); // 114 + 22 + 2 = 138 ≤ 224
     expect(fits.result).toBe("uniforms");
     expect(fits.probe).not.toHaveBeenCalled();
-    expect(query(168).result).toBe("uniforms"); // 136 ≤ 136
+    expect(query(170).result).toBe("uniforms"); // 138 ≤ 138
     expect(query(256, true, "texture").result).toBe("texture");
   });
 
   it("falls back to the texture transport when the uniform pair doesn't fit and the probe passes", () => {
-    expect(query(167).result).toBe("texture"); // 136 > 135; 73 ≤ 135
-    expect(query(105).result).toBe("texture"); // 73 ≤ 73
-    expect(query(167, false).result).toBeNull(); // the probe failed
+    expect(query(169).result).toBe("texture"); // 138 > 137; 75 ≤ 137
+    expect(query(107).result).toBe("texture"); // 75 ≤ 75
+    expect(query(169, false).result).toBeNull(); // the probe failed
   });
 
   it("nothing fits: null (the change is a swap)", () => {
-    const none = query(104);
+    const none = query(106);
     expect(none.result).toBeNull();
   });
 

@@ -20,7 +20,7 @@ const LAST_UPDATED = "7 November 2026";
 export default function Privacy() {
   return (
     <Container>
-      <PageIntro label="MOYLAN//OS / Privacy" title="Privacy notice">
+      <PageIntro label="MOYLAN//OS / Privacy" title="Privacy notice" nex={false}>
         <p>
           MOYLAN//OS is designed to collect as little as possible. It uses no cookies, no tracking
           and no analytics.

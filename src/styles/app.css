@@ -189,9 +189,20 @@
   }
 
   /* WebGL stage layer (src/experience/Stage.tsx): between the static backdrop and the content. */
+  /*
+   * The stage is as tall as the *largest* viewport (100lvh): mobile browsers collapse and expand
+   * their toolbars while the page scrolls, which changes the viewport's height many times a second.
+   * Sized to the largest viewport, the canvas never resizes for that (a resize clears it and
+   * rescales the scene: visible flicker and jumps on iOS Safari; 104 resizes per test → 2). The
+   * part under an expanded toolbar is simply hidden. Desktop: lvh = vh, unchanged.
+   */
   .os-stage {
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 100vh;
+    height: 100lvh;
     z-index: -1;
     pointer-events: none;
   }
@@ -230,6 +241,369 @@
     )
     [data-nex-poster] {
     opacity: 0;
+  }
+
+  /*
+   * NEX launcher (launch sprint, src/components/nex/NexSlot.tsx): a transparent button over NEX's
+   * place, so activating NEX opens its navigation panel. NEX's own glow is the hover feedback; the
+   * focus ring is always shown for keyboard users. Slots NEX only visits (homepage sections, no
+   * static emblem) offer it only while the stage is drawing NEX, never as an empty clickable area.
+   */
+  .nex-launcher {
+    background: transparent;
+  }
+  .nex-launcher:focus-visible {
+    outline: 2px solid var(--color-nex);
+    outline-offset: 4px;
+  }
+  :root:not(:has(.os-stage[data-nex-state="visible"]))
+    [data-nex-slot-kind="roaming"]
+    .nex-launcher {
+    display: none;
+  }
+  /*
+   * NEX // TRANSMISSION (src/components/nex/NexTransmission.tsx): a holographic transmission, not a
+   * chat box. A light trace rises towards NEX, hairlines frame the message, a faint scan sweeps it.
+   */
+  .nex-tx {
+    position: relative;
+    max-width: min(36rem, 100%);
+    padding: 0.75rem 1.25rem 0.85rem;
+    background:
+      radial-gradient(ellipse 80% 120% at 50% 0%, rgb(63 224 208 / 0.09), transparent 70%),
+      repeating-linear-gradient(0deg, rgb(63 224 208 / 0.025) 0 1px, transparent 1px 3px);
+    border-block: 1px solid transparent;
+    border-image: linear-gradient(90deg, transparent, rgb(63 224 208 / 0.45), transparent) 1;
+  }
+  .nex-tx::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 100%;
+    width: 1px;
+    height: 1.75rem;
+    background: linear-gradient(to top, rgb(63 224 208 / 0.6), transparent);
+  }
+  .nex-tx-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--color-nex);
+  }
+  .nex-tx-signal {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 0.7rem;
+  }
+  .nex-tx-signal i {
+    width: 2px;
+    background: var(--color-nex);
+    opacity: 0.85;
+  }
+  .nex-tx-signal i:nth-child(1) {
+    height: 40%;
+  }
+  .nex-tx-signal i:nth-child(2) {
+    height: 70%;
+  }
+  .nex-tx-signal i:nth-child(3) {
+    height: 100%;
+  }
+  .nex-tx-body {
+    margin-top: 0.6rem;
+    overflow-wrap: anywhere;
+    font-size: 1.125rem;
+    line-height: 1.45;
+    color: var(--color-text);
+    text-shadow: 0 0 18px rgb(63 224 208 / 0.25);
+  }
+  @media (min-width: 40rem) {
+    .nex-tx-body {
+      font-size: 1.25rem;
+    }
+  }
+  /* The part not yet typed keeps its space (no layout shift). */
+  .nex-tx-rest {
+    color: transparent;
+    text-shadow: none;
+  }
+  .nex-tx-cursor {
+    display: inline-block;
+    position: relative;
+    width: 0;
+  }
+  .nex-tx[data-state="typing"] .nex-tx-cursor::after {
+    content: "";
+    position: absolute;
+    left: 2px;
+    bottom: -0.15em;
+    width: 0.5ch;
+    height: 1.05em;
+    background: var(--color-nex);
+    box-shadow: 0 0 10px rgb(63 224 208 / 0.6);
+    animation: nex-blink 1s steps(1) infinite;
+  }
+  @keyframes nex-blink {
+    50% {
+      opacity: 0;
+    }
+  }
+  :root[data-motion="full"] .nex-tx[data-state="typing"] .nex-tx-signal i {
+    animation: nex-signal 0.9s ease-in-out infinite;
+  }
+  .nex-tx-signal i:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+  .nex-tx-signal i:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+  @keyframes nex-signal {
+    50% {
+      opacity: 0.25;
+    }
+  }
+  /*
+   * Before the script takes over, the prerendered message waits invisibly in its reserved space
+   * (it then types). Failsafes: without JavaScript it appears after 3 s; with reduced motion, at once.
+   */
+  .nex-tx[data-state="pending"] .nex-tx-body [aria-hidden] {
+    color: transparent;
+    animation: nex-tx-failsafe 0s linear 3s forwards;
+  }
+  @keyframes nex-tx-failsafe {
+    to {
+      color: inherit;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .nex-tx[data-state="pending"] .nex-tx-body [aria-hidden] {
+      color: inherit;
+    }
+  }
+
+  /*
+   * NEX's companion dock (src/components/nex/NexCompanion.tsx): a small fixed spot in the corner,
+   * clear of the safe areas, where NEX accompanies the visitor. NEX himself is drawn by the stage
+   * behind the page; the dock only adds his button (and minimise). Only while the stage draws.
+   */
+  /*
+   * Placed from the top by the *small* viewport (100svh, the height with toolbars expanded), so
+   * mobile toolbars collapsing or expanding never move it (NEX would otherwise follow in steps).
+   * `--nex-dock-size` is the spot's size at each breakpoint.
+   */
+  .nex-dock {
+    --nex-dock-size: 4.75rem;
+    position: fixed;
+    right: max(1.25rem, env(safe-area-inset-right));
+    top: calc(100vh - var(--nex-dock-size) - max(1.25rem, env(safe-area-inset-bottom)));
+    top: calc(100svh - var(--nex-dock-size) - max(1.25rem, env(safe-area-inset-bottom)));
+    z-index: 30;
+    pointer-events: none;
+  }
+  .nex-dock-spot {
+    width: var(--nex-dock-size);
+    height: var(--nex-dock-size);
+  }
+  /* Narrow phones: a smaller NEX, closer to the edge, over less of each line of text. */
+  @media (max-width: 30rem) {
+    .nex-dock {
+      --nex-dock-size: 3.75rem;
+      right: max(0.5rem, env(safe-area-inset-right));
+    }
+  }
+  /* The dock's button covers nearly all of NEX's spot: a comfortable tap target at any size. */
+  .nex-dock .nex-launcher {
+    inset: 4%;
+  }
+  @media (min-width: 64rem) {
+    .nex-dock {
+      --nex-dock-size: 7.5rem;
+    }
+  }
+  .nex-dock button {
+    pointer-events: auto;
+  }
+  /*
+   * NEX's dock controls (his button and Minimise) exist only while the stage is drawing NEX: not
+   * before he appears, not on devices that can't run his shaders (the stage still draws the
+   * background), not while he is faded out. `display: none` also takes them out of the tab order
+   * and the accessibility tree, so there is never an invisible control to tab to or tap. "Show NEX"
+   * is deliberately not included: it is how a minimised NEX comes back.
+   */
+  :root:not(:has(.os-stage[data-nex-state="visible"]))
+    .nex-dock
+    :is(.nex-launcher, .nex-dock-hide) {
+    display: none;
+  }
+  /*
+   * The mirror spans NEX's footprint but shows mainly his core and rings, at 60 %: enough to keep
+   * him recognisable over cards, while text passing beneath keeps nearly the contrast it has with
+   * NEX behind the page (measured on 320–412 px phones; launch-evidence/review-4).
+   */
+  .nex-dock-mirror {
+    position: absolute;
+    inset: -32%;
+    width: 164%;
+    height: 164%;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 450ms var(--ease-os);
+    mask-image: radial-gradient(circle closest-side, #000 38%, transparent 70%);
+  }
+  /* Shown once NEX has arrived in the dock (CompanionMirror), fading in and out. */
+  .nex-dock-mirror[data-visible] {
+    opacity: 0.6;
+  }
+  .nex-dock-hide {
+    position: absolute;
+    top: -0.25rem;
+    left: -0.25rem;
+    display: grid;
+    place-items: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border: 1px solid var(--color-steel);
+    border-radius: 999px;
+    background: rgb(5 8 11 / 0.7);
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+    line-height: 1;
+    opacity: 0.75;
+  }
+  .nex-dock-hide:hover,
+  .nex-dock-hide:focus-visible {
+    opacity: 1;
+    color: var(--color-text);
+  }
+  /*
+   * Placed in NEX's own corner of the dock, not after it: the dock is positioned so that its spot
+   * ends just above the bottom edge (safe areas and toolbars included), so anything laid out below
+   * the spot would hang off the screen.
+   */
+  .nex-dock-show {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    white-space: nowrap;
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid var(--color-steel);
+    border-radius: 999px;
+    background: rgb(5 8 11 / 0.8);
+    padding-inline: 1rem;
+    font-size: 0.8rem;
+    color: var(--color-text);
+  }
+  .nex-dock-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 999px;
+    background: var(--color-nex);
+    box-shadow: 0 0 8px var(--color-nex);
+  }
+  :root:not(
+      :has(
+        .os-stage:is(
+          [data-stage-state="running"],
+          [data-stage-state="static"],
+          [data-stage-state="paused"]
+        )
+      )
+    )
+    .nex-dock {
+    display: none;
+  }
+  /* The end of every page scrolls clear of the dock (its last links are never under NEX). */
+  :root:has(
+      .os-stage:is(
+        [data-stage-state="running"],
+        [data-stage-state="static"],
+        [data-stage-state="paused"]
+      )
+    )
+    body {
+    padding-bottom: 7rem;
+  }
+  @media (min-width: 64rem) {
+    :root:has(
+        .os-stage:is(
+          [data-stage-state="running"],
+          [data-stage-state="static"],
+          [data-stage-state="paused"]
+        )
+      )
+      body {
+      padding-bottom: 9.5rem;
+    }
+  }
+
+  /* NEX's spoken introduction: the transcript (captions) brightens while NEX speaks. */
+  .nex-speech {
+    transition: color 400ms var(--ease-os);
+  }
+  .nex-speech[data-speaking] {
+    color: var(--color-nex);
+  }
+
+  /* The opening's scroll cue: a slow, soft bob (Full Motion only; collapsed otherwise). */
+  :root[data-motion="full"] .nex-scroll-arrow {
+    animation: nex-bob 2.4s ease-in-out infinite;
+  }
+  @keyframes nex-bob {
+    0%,
+    100% {
+      transform: translateY(0);
+      opacity: 0.6;
+    }
+    50% {
+      transform: translateY(0.35rem);
+      opacity: 1;
+    }
+  }
+
+  /*
+   * The portfolio reveals itself as the visitor scrolls (scroll-driven, no JavaScript): Full Motion
+   * in browsers with scroll timelines only; everywhere else the content is simply there.
+   */
+  @supports (animation-timeline: view()) {
+    :root[data-motion="full"] .os-reveal {
+      animation: os-reveal linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 70%;
+    }
+  }
+  @keyframes os-reveal {
+    from {
+      opacity: 0;
+      transform: translateY(2rem);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* NEX's hint names the right gesture: "Tap" on touch-first devices, "Click" elsewhere. */
+  .nex-hint-touch {
+    display: none;
+  }
+  @media (hover: none) and (pointer: coarse) {
+    .nex-hint-pointer {
+      display: none;
+    }
+    .nex-hint-touch {
+      display: inline;
+    }
+  }
+  .nex-menu::backdrop {
+    background: rgb(5 8 11 / 0.6);
   }
 
   /* "// LABEL" system voice. */

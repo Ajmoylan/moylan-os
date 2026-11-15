@@ -1,31 +1,44 @@
 import type { ReactNode } from "react";
 import type { AgentId } from "~/agents/registry";
+import { NexSlot } from "~/components/nex/NexSlot";
 
 interface PageIntroProps {
   agentId?: AgentId;
   /** System label above the heading, e.g. "MOYLAN//OS / Projects". */
   label: string;
   title: string;
+  /**
+   * NEX accompanies the visitor here (launch sprint): on wide screens a NEX slot beside the
+   * heading, where NEX glides in from the previous page. Off for pages where NEX would only
+   * distract (the privacy notice).
+   */
+  nex?: boolean;
   children?: ReactNode;
 }
 
 /** Standard page header used by all secondary pages. */
-export function PageIntro({ agentId = "nex", label, title, children }: PageIntroProps) {
+export function PageIntro({ agentId = "nex", label, title, nex = true, children }: PageIntroProps) {
   return (
-    <header data-agent={agentId} className="pt-16 pb-10 sm:pt-24">
-      <p className="os-label">
-        <span
-          aria-hidden="true"
-          className="mr-2 inline-block size-1.5 rounded-full bg-(--accent) align-middle"
-        />
-        {label}
-      </p>
-      <h1 className="mt-5 text-title font-semibold tracking-tight text-balance sm:text-5xl">
-        {title}
-      </h1>
-      {children && (
-        <div className="mt-6 max-w-2xl text-lg leading-relaxed text-text-muted">{children}</div>
-      )}
+    <header
+      data-agent={agentId}
+      className="pt-16 pb-10 sm:pt-24 lg:grid lg:grid-cols-[1fr_12rem] lg:items-center lg:gap-10"
+    >
+      <div>
+        <p className="os-label">
+          <span
+            aria-hidden="true"
+            className="mr-2 inline-block size-1.5 rounded-full bg-(--accent) align-middle"
+          />
+          {label}
+        </p>
+        <h1 className="mt-5 text-title font-semibold tracking-tight text-balance sm:text-5xl">
+          {title}
+        </h1>
+        {children && (
+          <div className="mt-6 max-w-2xl text-lg leading-relaxed text-text-muted">{children}</div>
+        )}
+      </div>
+      {nex && <NexSlot id="page" poster className="hidden aspect-square w-full p-3 lg:block" />}
     </header>
   );
 }
