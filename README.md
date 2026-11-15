@@ -65,6 +65,8 @@ npm run preview      # serve the production build with its real security headers
 npm run check        # format, lint, typecheck, unit tests, build, end-to-end + accessibility
 npm test             # unit and component tests (Vitest)
 npm run test:e2e     # Playwright, desktop + mobile (build first; run `npx playwright install chromium` once)
+npm run build:morph-test  # development-only build with the ?morph=test diagnostic (never deploy)
+npm run test:e2e:morph    # the morph and viability e2e tests (after build:morph-test)
 npm run audit:prod   # production dependency audit (high/critical)
 npm run audit:all    # full dependency-tree audit (high/critical)
 ```

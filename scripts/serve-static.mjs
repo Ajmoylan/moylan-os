@@ -38,6 +38,7 @@ const contentTypes = {
   ".txt": "text/plain; charset=utf-8",
   ".xml": "application/xml; charset=utf-8",
   ".pdf": "application/pdf",
+  ".m4a": "audio/mp4",
 };
 
 function routeHeaders(pathname) {

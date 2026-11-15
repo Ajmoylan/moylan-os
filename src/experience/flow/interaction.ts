@@ -25,10 +25,24 @@ export interface StageInteraction {
   velocity: Vector2;
   /** Splat radius in UV units (fraction of the viewport height). */
   radius: number;
+  /**
+   * The cursor's screen position (NDC), in every pointer mode, and whether it is over the page and
+   * has moved. Read by NEX to turn subtly towards the visitor; never by a shader.
+   */
+  cursor: Vector2;
+  cursorActive: boolean;
 }
 
 export function createInteraction(radius: number): StageInteraction {
-  return { mode: "none", texture: null, pointer: new Vector2(), velocity: new Vector2(), radius };
+  return {
+    mode: "none",
+    texture: null,
+    pointer: new Vector2(),
+    velocity: new Vector2(),
+    radius,
+    cursor: new Vector2(),
+    cursorActive: false,
+  };
 }
 
 /** Resets to "none": no texture, pointer and velocity at rest. */
@@ -37,6 +51,8 @@ export function clearInteraction(interaction: StageInteraction): void {
   interaction.texture = null;
   interaction.pointer.set(0, 0);
   interaction.velocity.set(0, 0);
+  interaction.cursor.set(0, 0);
+  interaction.cursorActive = false;
 }
 
 /** The uniforms FLOW_GLSL reads. Spread into a material's uniforms; update with `syncInteraction`. */

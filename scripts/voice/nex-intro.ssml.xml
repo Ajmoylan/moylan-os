@@ -1,0 +1,20 @@
+<!--
+  NEX's spoken introduction for Azure AI Speech (launch sprint). The caption on the site
+  (src/components/nex/NexVoice.tsx, NEX_INTRO) says exactly the same words.
+  {{VOICE}} and {{STYLE_OPEN}}/{{STYLE_CLOSE}} are filled in by synthesise.mjs.
+  Pronunciation: NEX = "Nex" /nɛks/ (not spelled out); MOYLAN//OS = "Moylan O S"; Moylan = /ˈmɔɪlən/
+  ("MOY-lan"; to be confirmed by Alex).
+-->
+<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-GB">
+  <voice name="{{VOICE}}">
+    {{STYLE_OPEN}}
+    <prosody rate="-8%" pitch="-2%">
+      Hello. <break time="400ms"/>
+      I'm <phoneme alphabet="ipa" ph="nɛks">Nex</phoneme>. <break time="550ms"/>
+      Welcome to <phoneme alphabet="ipa" ph="ˈmɔɪlən">Moylan</phoneme> <say-as interpret-as="characters">OS</say-as>,
+      <break time="150ms"/> Alex <phoneme alphabet="ipa" ph="ˈmɔɪlənz">Moylan's</phoneme> digital world. <break time="650ms"/>
+      Scroll to discover his work, <break time="250ms"/> or select me, <break time="150ms"/> and I'll guide you.
+    </prosody>
+    {{STYLE_CLOSE}}
+  </voice>
+</speak>

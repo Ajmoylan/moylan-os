@@ -15,18 +15,32 @@ export interface AnchorBox {
   top: number;
   width: number;
   height: number;
-  /** An anchor is in the document. */
+  /** An anchor is in the document and laid out (a `display: none` anchor has no box). */
   present: boolean;
+  /**
+   * Launch sprint: the anchor asks for NEX to be kept inside the viewport
+   * (`data-nex-contain="<media query>"`, evaluated when the box is measured).
+   */
+  contain: boolean;
 }
 
 export class AnchorTracker {
-  readonly box: AnchorBox = { left: 0, top: 0, width: 0, height: 0, present: false };
+  readonly box: AnchorBox = {
+    left: 0,
+    top: 0,
+    width: 0,
+    height: 0,
+    present: false,
+    contain: false,
+  };
   /** Incremented whenever `box` changes, so consumers recompute placement only then. */
   version = 0;
   /** DOM measurements taken so far (diagnostics and tests). */
   measurements = 0;
   private element: Element | null = null;
   private dirty = true;
+  /** The current element's box has been measured since it last could have changed. */
+  private measured = false;
   private observer: ResizeObserver | null = null;
   private attached = false;
 
@@ -66,13 +80,15 @@ export class AnchorTracker {
     this.observer = null;
   }
 
-  /** Follow a new anchor (or none) after a route change. */
-  setElement(element: Element | null): void {
-    if (element === this.element) return;
+  /** Follow a new anchor (or none) after a route change. Returns whether the element changed. */
+  setElement(element: Element | null): boolean {
+    if (element === this.element) return false;
     if (this.element) this.observer?.unobserve(this.element);
     this.element = element;
+    this.measured = false;
     if (element) this.observer?.observe(element);
     this.invalidate();
+    return true;
   }
 
   /** The anchor's viewport box, measured only if something changed since the last read. */
@@ -86,13 +102,26 @@ export class AnchorTracker {
       }
       return this.box;
     }
-    if (!this.dirty && this.box.present) return this.box;
+    if (!this.dirty && this.measured) return this.box;
     this.dirty = false;
+    this.measured = true;
     this.measurements++;
     const rect = element.getBoundingClientRect();
     const box = this.box;
+    // An anchor that isn't laid out (e.g. a NEX slot hidden on narrow screens) is no anchor: the
+    // agent leaves as on a page without one. Its ResizeObserver reports when it is laid out again.
+    if (rect.width === 0 || rect.height === 0) {
+      if (box.present) {
+        box.present = false;
+        this.version++;
+      }
+      return box;
+    }
+    const query = element.getAttribute("data-nex-contain");
+    const contain = query !== null && (query === "" || this.win.matchMedia(query).matches);
     if (
       !box.present ||
+      contain !== box.contain ||
       rect.left !== box.left ||
       rect.top !== box.top ||
       rect.width !== box.width ||
@@ -103,6 +132,7 @@ export class AnchorTracker {
       box.width = rect.width;
       box.height = rect.height;
       box.present = true;
+      box.contain = contain;
       this.version++;
     }
     return box;

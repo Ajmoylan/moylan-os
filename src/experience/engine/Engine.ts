@@ -54,6 +54,11 @@ export type FramePhase = (typeof FRAME_PHASES)[number];
 export interface FrameLayer {
   readonly phase: FramePhase;
   update(engine: Engine, delta: number): void;
+  /**
+   * Optional: runs right after the scene is drawn in the same frame, while the drawing buffer still
+   * holds it (launch sprint: NEX's companion mirror copies a small region of it).
+   */
+  afterRender?(engine: Engine): void;
   /** Idempotent: the engine disposes its layers, and their owner may do so too. */
   dispose(): void;
 }
@@ -242,7 +247,7 @@ export class Engine {
         canvas,
         contextAttributes(options.gl),
       );
-      if (!context) throw new Error("WebGL2 context unavailable for the stage renderer.");
+      if (!context) throw new Error("WebGL2 context unavailable");
       own.defer(() => releaseContext(context));
       this.context = context;
 
@@ -357,6 +362,7 @@ export class Engine {
       this.camera.updateProjectionMatrix();
     }
     this.renderer.setSize(width, height, true);
+    this.redrawAfterResize();
     this.invalidate();
   }
 
@@ -399,7 +405,24 @@ export class Engine {
     this.dpr = dpr;
     this.renderer.setPixelRatio(dpr);
     this.renderer.setSize(this.width, this.height, true);
+    this.redrawAfterResize();
     this.invalidate();
+  }
+
+  /**
+   * Resizing the drawing buffer clears it, and the browser may show the cleared canvas before the
+   * next animation frame (a resize observed after this frame was drawn): a blank flash. So once the
+   * scene has been drawn, it is drawn again at once with the new size (the layers' state is the last
+   * frame's; the next frame updates them as usual). Never while frames are stopped.
+   */
+  private redrawAfterResize(): void {
+    if (!this.drawn || this.loop === "never" || this.width <= 0 || this.height <= 0) return;
+    try {
+      this.renderer.render(this.scene, this.camera);
+      for (const layer of this.layers) layer.afterRender?.(this);
+    } catch (error) {
+      this.fail(error);
+    }
   }
 
   private schedule(): void {
@@ -431,6 +454,7 @@ export class Engine {
           if (this.state !== "active") return;
         }
         this.renderer.render(this.scene, this.camera);
+        for (const layer of this.layers) layer.afterRender?.(this);
         if (!this.drawn) {
           this.drawn = true;
           this.options.onFirstFrame?.();

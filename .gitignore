@@ -29,6 +29,11 @@ local.settings.json
 # (available for development, not published). See README.md.
 docs/references/
 
+# Local-only placeholder recordings (NEX's voice from a macOS system voice or an Azure F0 audition,
+# neither licensed for publishing). Never committed, so never deployed; CI also fails a build that
+# contains one (scripts/postbuild.mjs). See src/content/voice.ts.
+public/audio/*.placeholder.*
+
 # Local-only visual prototypes and experiments (e.g. the NEX design study); never published.
 # Production code lives in src/; see docs/ARCHITECTURE.md §19.
 prototypes/

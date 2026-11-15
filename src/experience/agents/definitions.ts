@@ -17,7 +17,7 @@ export function definitionFor(id: StageAgent): AgentRenderDefinition | undefined
  * lazily loading it behind the explicit `?morph=test` switch. Never used for ordinary visits.
  */
 export function registerDiagnosticDefinition(definition: AgentRenderDefinition): void {
-  if (definition.id !== "test") throw new Error("Only the diagnostic TEST shape may be registered");
+  if (definition.id !== "test") throw new Error("Only TEST may be registered");
   definitions.test = definition;
 }
 

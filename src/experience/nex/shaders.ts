@@ -389,12 +389,49 @@ mat3 orbitFrame(int k) {
  * expected shape, so a future edit can't silently skip it.
  */
 export function withOrbitTexture(source: string): string {
-  if (!source.includes(ORBIT_UNIFORMS)) throw new Error("NEX shader without uniform orbit frames");
+  if (!source.includes(ORBIT_UNIFORMS)) throw new Error("No uniform orbit frames");
   const derived = source
     .replace(ORBIT_UNIFORMS, ORBIT_TEXTURE)
     .replaceAll("uFrames[frame]", "orbitFrame(frame)");
-  if (/uFrames/.test(derived)) throw new Error("NEX shader with unconverted orbit access");
+  if (/uFrames/.test(derived)) throw new Error("unconverted orbit access");
   return derived;
+}
+
+/**
+ * Launch sprint: NEX's point shader with its personality. The core can lean (`uCoreShift`,
+ * NEX-local units, added to the core particles' targets after their orbit frame, before the
+ * arrival), and an energy pulse (`uPulse`: wavefront radius from the core, strength) brightens and
+ * slightly enlarges the particles it passes. Only used with NEX's personality enabled; at a zero
+ * shift and strength every particle is computed exactly as before. Throws if the source no longer
+ * has the expected shape.
+ */
+export function withPersonality(source: string): string {
+  const declaration = "uniform float uGlowFade;\n";
+  const target = "  vec3 p = target;\n";
+  const depth = "  // Depth: the far side recedes";
+  for (const point of [declaration, target, depth]) {
+    if (source.split(point).length !== 2) {
+      throw new Error("NEX: no personality hooks");
+    }
+  }
+  return (
+    source
+      .replace(declaration, `${declaration}uniform vec3 uCoreShift;\nuniform vec2 uPulse;\n`)
+      .replace(target, `  if (role == 0) target += uCoreShift;\n${target}`)
+      // The pulse's wave: the faint halo dust (role 4) lights up most, so it reads as a ring of light
+      // expanding outwards. (Kept out of the GLSL, which ships in the bundle.)
+      .replace(
+        depth,
+        `  if (uPulse.y > 0.0) {
+    float front = length(target - uCoreShift) - uPulse.x;
+    float wave = uPulse.y * exp(-front * front * 45.0);
+    alpha *= 1.0 + wave * (role == 4 ? 5.0 : role == 0 ? 1.2 : 2.6);
+    size *= 1.0 + wave * 0.5;
+    color = mix(color, uHot, wave * 0.45);
+  }
+${depth}`,
+      )
+  );
 }
 
 /** NEX's point and line vertex shaders for the orbit-texture transport (core/orbits/). */
@@ -415,11 +452,11 @@ export function nexMorphModule(texture: boolean): string {
   const varyings = "varying vec3 vColor;\nvarying float vAlpha;\n";
   const main = "void main() {";
   if (source.split(varyings).length !== 2 || source.split(main).length !== 2) {
-    throw new Error("NEX point shader without the expected varyings or main()");
+    throw new Error("NEX: no varyings or main()");
   }
   const [head, body] = source.replace(varyings, "").split(main) as [string, string];
   if (/gl_Position|gl_PointSize|\bvColor\b|\bvAlpha\b/.test(head)) {
-    throw new Error("NEX point shader writes its outputs outside main()");
+    throw new Error("NEX: output outside main()");
   }
   const renamed = body
     .replaceAll("gl_Position", "morphClip")

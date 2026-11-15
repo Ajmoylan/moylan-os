@@ -1,6 +1,6 @@
 # MOYLAN//OS — Architecture
 
-**Status:** v0.11 · 11 November 2026 · Milestone 1 and Milestone 2.1 complete and reviewed; Milestone 2.2 (first live WebGL environment) complete (§18); Milestone 2.3 (NEX avatar on the homepage) implemented, homepage appearance approved, independent-review findings remediated (§19); Milestone 2.4a (plain Three.js stage engine replacing React Three Fiber; ADR-002 amended) reviewed and merged (§20); Milestone 2.4b.0 (NEX motion clean-up) reviewed and merged; Milestone 2.4b.1a (NEX-only Shared AgentCore extraction) reviewed and merged, with non-blocking follow-ups recorded as future-phase gates (§21); Milestone 2.4b.1b (orbit-texture transport behind a comparison switch; uniforms remain NEX's default) reviewed and merged (§22); Milestone 2.4b.2 (first GPU morph with a diagnostic TEST shape) implemented, in independent review (§23); ADR-004 and ADR-007 accepted
+**Status:** v0.12 · 15 November 2026 · Milestone 1 and Milestone 2.1 complete and reviewed; Milestone 2.2 (first live WebGL environment) complete (§18); Milestone 2.3 (NEX avatar on the homepage) implemented, homepage appearance approved, independent-review findings remediated (§19); Milestone 2.4a (plain Three.js stage engine replacing React Three Fiber; ADR-002 amended) reviewed and merged (§20); Milestone 2.4b.0 (NEX motion clean-up) reviewed and merged; Milestone 2.4b.1a (NEX-only Shared AgentCore extraction) reviewed and merged, with non-blocking follow-ups recorded as future-phase gates (§21); Milestone 2.4b.1b (orbit-texture transport behind a comparison switch; uniforms remain NEX's default) reviewed and merged (§22); Milestone 2.4b.2 (first GPU morph with a diagnostic TEST shape) implemented, in independent review (§23); launch sprint (NEX as the site's host, companion mode, cinematic homepage) implemented, visual experience approved, awaiting final review (§24); ADR-004 and ADR-007 accepted
 **Sources:** master plan v1.0 (PDF + Apple Notes text) and blueprint illustration in `docs/references/` (kept locally; not published in the repository).
 **Companion documents:** [`DESIGN-BRIEF.md`](DESIGN-BRIEF.md) · [`AGENT-PROFILES.md`](AGENT-PROFILES.md) · [`SECURITY.md`](SECURITY.md) · [`PRIVACY-COMPLIANCE.md`](PRIVACY-COMPLIANCE.md)
 
@@ -1035,7 +1035,7 @@ Engine order every frame: `simulate` (FlowSimulation, then TransitionClock) → 
 | **`core/capabilities.ts`** | **One device-viability assessment per WebGL context generation**, shared by the clock and AgentCore: an agent's transport is viable when declared with a measured vertex-uniform count that fits `MAX_VERTEX_UNIFORM_VECTORS − 32`, the float-texture probe passes (texture only, asked lazily), and its idle program has not failed to link. None viable → the agent is **unsupported** for that context (its accessible poster stays; not a Stage failure) | — |
 | **`core/AgentCore.ts`** | The views: the active view (the drawn agent) and, while preparing or morphing, the destination view (built hidden). Each view gets its own colours; idle programs are verified before a view first draws (a failed link rejects that transport and tries the next one once). The morph: destination warm-up (its programs compiled asynchronously; genuine success only), the pair program from the bounded compile queue (`core/morph/programs.ts`: one active, one latest-wanted queued, two cached, epoch-guarded), the morph geometry (`core/morphSlot.ts`) and its release order | update |
 | **`nex/NexAvatar.ts`** | NEX's renderer: unchanged scene graph, materials and shaders in its own (`none`) role; reads its appearance and placement from the clock; in a morph, its particles are drawn by the pair program (its own point layer stays registered with Three.js, material hidden) and its overlays fade with its presence | view |
-| **`agents/test/`** | The diagnostic TEST shape (lazy chunk, loaded only with `?morph=test`; to be removed or documented as a diagnostic before public launch) | view |
+| **`agents/test/`** | The diagnostic TEST shape: a lazy chunk loaded only with `?morph=test`, and only in development builds (the dev server, or `npm run build:morph-test`); compiled out of production builds since the launch sprint (§24) | view |
 
 ### GPU buffers (accepted design, unchanged)
 
@@ -1078,6 +1078,102 @@ The morph's light follows the linear phase in linear light (movement keeps the e
 
 1. Luminance acceptance per production agent pair, after the methodology review above.
 2. Physical mobile and low-tier GPU testing, including synchronous shape generation and cold shader-compile latency on real devices (one Chromium Metal run's first asynchronous compile took 456 ms; it blocked no frame).
-3. Removal of the `?morph=test` switch, the TEST definition and the FORGE → TEST mapping, or explicit authorisation to keep them as a diagnostic.
+3. ~~Removal of the `?morph=test` switch, the TEST definition and the FORGE → TEST mapping, or explicit authorisation to keep them as a diagnostic.~~ **Resolved (launch sprint, 15 November 2026):** kept as a development-only diagnostic, compiled out of production builds (§24, *TEST morph diagnostic*).
 4. Three.js-version-sensitive lifecycle checks rerun on any Three.js upgrade (geometry registration before the visibility test, the program key's `hasPositionAttribute`, shaders deleted on first use, `compileAsync` ending on dispose).
 5. `src/experience/nex/__fixtures__/NexAvatar.2ceeff8.ts` is the NEX parity oracle; remove it once parity against `2ceeff8` is no longer required.
+
+## 24. Launch sprint: NEX as the site's host (implemented; visual experience approved on iPhone 15 November 2026; awaiting final review)
+
+**Goal:** NEX accompanies the visitor and helps them navigate, reusing the persistent stage, `TransitionClock`, the shared interaction and the anchor tracker; no new rendering system, particle system or renderer. Without Full Motion, WebGL or a laid-out slot, everything falls back to plain HTML navigation.
+
+**NEX's personality** (`nex/look.ts`, `NexAvatar`) is opt-in per view (`AgentViewContext.personality`, set by the Stage). With it off, NEX renders exactly its approved idle look: the same shaders, uniforms and values, proven frame by frame against the 2ceeff8 renderer by `nex/appearance.test.ts`. With it on, the changes are intentional, documented and unit-tested, and none happens without Full Motion:
+
+- **Rings turn towards the cursor.** This needs pointer effects. The whole ring assembly rotates (it never translates), up to 0.56 rad sideways and 0.38 rad vertically. It follows a gently damped spring (1.1 Hz, damping ratio 0.82: eases in and out, at most a slight settle) and returns exactly to the approved pose when the cursor leaves. Orbits, spins and particle appearance are unchanged.
+  - The ring cage's projected silhouette stays circular at every turn tested, up to 0.6 rad: aspect 1.000–1.007, full outline coverage.
+  - The "flattened" look seen in review is NEX's arrival, which deliberately flies the particles in from a flattened scatter shell, not the turn.
+- **Core leans.** Independently, the core particles, glow billboard and shell lean towards the cursor on screen by up to 16 % of the ring radius (0.12 NEX-local units, on a quicker spring: 1.5 Hz, damping 0.75), staying inside the innermost ring band (≈ 0.4). The glow and shell move as objects.
+- **Energy pulse (heartbeat), distinct from the approved breathing.** Every half breathing cycle (3.74 s of idle time; about 5.3 s real) a soft shell of light leaves the core and travels out to the halo over 1.9 s of idle time. It brightens the particles it passes (halo dust most, so it reads as an expanding ring), fades as it spreads, and the core's glow swells briefly (+0.7 intensity) as it is released.
+  - It runs with Full Motion only, once NEX has formed. There are no extra draws or textures.
+- **Shader and budget.** The point shader (`withPersonality`; exact at zero shift and strength) gains `uniform vec3 uCoreShift` and `uniform vec2 uPulse`, so the declared vertex-uniform budget is 114 (uniforms) / 51 (texture).
+- **Vitality pulse (new, distinct from the approved breathing).** It adds amplitude on the approved 7.48 s breathing phase, so the result is one coordinated, low-frequency pulse:
+  - core scale +0.045 (approved 0.055);
+  - glow intensity +0.22 (approved 0.9–1.1);
+  - atmosphere +0.5;
+  - shell +0.12.
+
+  It is zero at the cycle's rest phase, so the formed NEX at time 0 and a Reduced Motion still frame are unchanged. There are no extra draws, textures or shader branches.
+- **Attention.** Written by `TransitionClock` into `StageTransition.visibility.attention`: a held level of 0.45 while the pointer or focus is on NEX's launcher, and 1 on activation, decaying over 0.6 s. It adds up to +0.32 to the glow intensity and half that to the shell.
+
+The flow simulation publishes the cursor's position (`StageInteraction.cursor`, `cursorActive`) in every pointer mode; shaders don't read it.
+
+**Placement:**
+- **Glide between anchors** (`TransitionClock`). When `data-stage-anchor="nex"` moves to another element (the homepage opening handing NEX to the dock, and back), NEX glides to the new anchor, which is re-measured each frame. It is placed at once without Full Motion. Morphs keep their own segments.
+  - The glide is one damped spring (`GLIDE_SPRING`: 0.8 Hz, damping ratio 0.86) on position and log scale together, so he moves and shrinks as one movement and lands in about `GLIDE_SECONDS` (1.1 s), settling exactly on the anchor.
+  - It starts at the velocity NEX is already drawn with (tracked every frame, lightly smoothed, capped at 7 world units a second so a jump to a section never flings him). A NEX carried up by the scrolling page keeps flowing into the dock instead of stopping and restarting.
+  - A reversal mid-glide (scrolling back up) retargets the same springs, so he turns smoothly. Unit-tested: velocity continuity at the handover and on reversal, and an exact landing.
+  - `StageTransition.placement.gliding` tells other layers a glide is under way (the companion mirror waits for it).
+- **Containment in the viewport** (`nex/placement.ts`, `AnchorTracker`). An anchor with `data-nex-contain="<media query>"` keeps NEX's whole footprint (1.5 × the ring radius, the halo included) inside the viewport, 12 px from its edges and below the 64 px sticky header. The clamp is continuous, so NEX behaves like `position: sticky` and never jumps. If NEX is larger than the space, it is centred in it. The homepage opening uses it on wide screens only (`(min-width: 64rem)`), so NEX stays fully in view until he docks.
+  - Cause of the earlier clipping: NEX followed its slot exactly, and the next section takes NEX only at the viewport's centre line, so the previous slot could scroll part-way off screen first.
+- **Laid-out anchors only.** A zero-size anchor (a slot hidden on narrow screens) counts as absent, so NEX leaves as on a page without an anchor. It is still measured only after layout can have changed.
+
+**Companion mode** (`NexCompanion`, `placement.ts`, `nex/mirror.ts`): NEX accompanies the visitor on every route and device, with one renderer and one NEX.
+- **Where NEX is:** a tiny store holds `page` (the route's primary spot, `NexSlot` with `data-nex-primary`: the homepage opening, a dedicated page's heading), `dock` or `hidden`. One IntersectionObserver watches the primary spot. NEX stays there while at least 35 % of it is in view and returns once 60 % is (hysteresis); otherwise he glides, shrinking, into the **dock**. Routes without a spot, or where it isn't laid out (narrow screens), use the dock.
+- **The dock:** a small fixed spot in the bottom-right corner (76 px on phones, 120 px on wide screens), clear of the safe areas. It holds NEX's button (opens his panel; one launcher at a time across the page) and a "Minimise NEX" button. Minimised, NEX fades out for the rest of the visit, in memory only, and "Show NEX" brings him back. Pages get extra end padding, so their last links never sit under the dock. The dock is shown only while the stage draws.
+- **The companion mirror:** NEX is drawn behind the page, so cards scrolling over the dock veiled him.
+  - While he is docked, `CompanionMirror` (a stage layer) copies just the dock's region of the frame just drawn into a small 2D canvas in the dock, above the content, masked to a soft circle. It runs in the engine's new optional `FrameLayer.afterRender` step, while the drawing buffer still holds the frame.
+  - The cost is one blit of about 250 × 250 device pixels per drawn frame: about 0.1 ms on Chromium/Metal, at or under WebKit's 1 ms timer resolution, with identical frame intervals. There is no second renderer, context or scene.
+  - Layout is read only when the dock or viewport may have changed. The layer is disposed with the others (context loss, motion Off).
+  - **Handover without a layer switch:** the mirror shows NEX only once he has arrived (not while `gliding`), then fades in over 450 ms; leaving the dock, it keeps copying while it fades out. So the glide and the change of layer never overlap, and nothing pops.
+  - **No one-time work at the first handover:** the dock is measured, the copy's buffer allocated and one copy made (then cleared) in the background about 45 frames after the stage starts.
+  - Where a card passes under the dock, NEX's light now shows over its edge, and his button is always the topmost element there.
+  - **Readability:** the mirror shows mainly NEX's core and rings, at 60 %. On narrow phones (≤ 30rem) the dock is 60 px and sits closer to the edge, with its button covering nearly all of it.
+    - Measured on 320, 375 and 412 px phones over About, Privacy, Projects and the homepage (`launch-evidence/review-4/readability.mjs`). The measure is the share of text pixels under the dock with less than 4.5:1 contrast: 4.2 % with the mirror, against 2.2 % with NEX behind the page only (6.0 % before this tuning). About 68 % fewer low-contrast text pixels than the first version.
+  - **Mobile viewport stability (iPhone diagnosis):** mobile browsers collapse and expand their toolbars while the page scrolls, which changes the viewport's height many times a second.
+    - The stage used to follow it. Each resize cleared the canvas and rescaled the scene, causing flicker, distortion and NEX jumping in place (104 canvas resizes in one iPhone test).
+    - The stage is now as tall as the largest viewport (`100lvh`) and the dock is placed from the top by the small viewport (`100svh`), so neither moves with the toolbar (2 resizes in the same test).
+    - Legitimate resizes (rotation, window changes) redraw the scene at once (`Engine.redrawAfterResize`), so a cleared canvas is never shown.
+    - The two remaining large steps in that test were NEX moving with the content he is attached to during a fast scroll (the opening's spot on phones), not glitches.
+    - The diagnosis used temporary on-device instrumentation (a frame-timing readout and switchable workload modes), compiled only into local builds. It has been removed from the code base.
+  - **Real hardware:** viewport stability, visual smoothness and the opening-to-dock handover were checked and approved on an iPhone 16 Pro Max (Safari, 60 fps, no quality reductions). The companion copy's cost was measured on Chromium/Metal and WebKit on a Mac only.
+
+**Page side:**
+- `NexSlot`: the route's own NEX spot, plus his button while NEX is there.
+- `NexMenu`: one native popover for the whole site, with plain links. Escape and outside clicks close it, and focus moves in and returns. Safari doesn't focus buttons on click, so focus return applies to keyboard activation there.
+- Window events (`lib/nex-events.ts`) carry anchor changes and attention to the stage. The stage owns the listeners and removes them with its resources.
+- The hint ("Click NEX" / "Tap NEX" to navigate, chosen by CSS media query: no storage, nothing to dismiss) sits in the homepage opening.
+
+**NEX // TRANSMISSION** (`NexTransmission`, reusable): NEX's own way of communicating.
+- **Look:** a holographic treatment rather than a chat box: a "NEX // TRANSMISSION" label with a signal indicator, a light trace rising towards NEX, hairline framing, a faint scan, teal-lit type and a blinking cursor.
+- **Typing:** the message types out quickly (about 4 s for the introduction), pausing at sentences, clauses and NEX's names. It is time-based, so a busy device never makes it slower. NEX's core glows while he transmits and pulses at each sentence.
+- **Accessibility:**
+  - The full message is in the page from the first render: screen readers get it once, whole, and the typed layer is hidden from them.
+  - The untyped part keeps its space, so nothing shifts.
+  - Any click, tap, key or scroll completes it at once; nothing else happens (no default is prevented, and focus isn't moved).
+  - Reduced or Off Motion shows it complete, and without JavaScript a CSS failsafe reveals it after 3 s.
+
+**Homepage:** a full-screen opening: the h1 (name and headline), NEX at the centre, his introduction as a transmission, the voice controls (only when a recording is configured: the text-only build ships none of their code), the hint and a scroll cue. It is followed by full-width sections (Introduction, Profile, Featured work, Career highlights, Pathways, Contact), each revealing itself as it scrolls in (CSS scroll-driven animation, Full Motion only). Content comes from `content/profile.ts` and `content/projects.ts`; every entry names its source, and nothing is inferred.
+
+**Budget:** the static NEX emblem is now a cacheable SVG file (`public/nex-emblem.svg`), not JavaScript, and the voice controls load only with a recording. That paid for companion mode and the transmission: initial JS 124.0 KB gz (budget 125). The lazy 3D stage, with the spring glide and mirror handover, is 156.9 KB gz (160,709 bytes; review target 160 KB, hard budget 250 KB) now that the TEST diagnostic is compiled out of production builds (it was 163,805 bytes, 35 under the target, with TEST's 2.8 KB chunk counted). Untested internal error messages were shortened, and explanatory comments are kept out of GLSL strings (they ship in the bundle).
+
+**TEST morph diagnostic: development builds only.** The Milestone 2.4b.2 `?morph=test` switch (§23) is kept for development behind `MORPH_TEST_BUILD` (`Stage.tsx`), a build-time constant that is true only in the dev server and in builds made with `VITE_MORPH_TEST=1` (`npm run build:morph-test`).
+- **Production builds** compile it out: no TEST chunk, and `?morph=test` does nothing (an e2e test checks that TEST is never requested or drawn).
+- **Guard** (`scripts/postbuild.mjs`): any build that contains TEST's shaders (marker: the `uTFrames` uniform) without `VITE_MORPH_TEST=1` fails; a flagged build warns that it must never be deployed.
+- **Tests:** the `?morph=test` e2e scenarios (`morph.spec.ts`, `viability.spec.ts`) skip on production builds and run in CI's second, flagged build (`npm run build:morph-test`, then `npm run test:e2e:morph`). Deployment must use the plain `npm run build`.
+
+**NEX's voice** (`NexVoice`, `content/voice.ts`): provider-independent. The site plays one prerecorded, same-origin file; replacing the voice (Azure S0, ElevenLabs, …) means dropping in a file and setting `LICENSED_RECORDING`, with no change to NEX's animation, navigation or subtitles.
+- **Subtitles:** the full introduction (`NEX_INTRO`) is always visible beneath NEX, whether sound is on, muted, unavailable or unsupported. It is marked while NEX speaks and never removed.
+- **Controls:**
+  - Sound is off by default; "Hear NEX" starts playback, with Replay and Stop while playing.
+  - "Mute NEX" stops playback at once and keeps NEX quiet for the rest of the visit (in memory only: no storage). "Unmute NEX" never restarts playback.
+  - Nothing autoplays, nothing loads before the first play, and the audio is released on unmount, so navigation never restarts it.
+  - Unavailable or unsupported audio removes the controls and says so. A discreet line discloses that the voice is AI-generated.
+- **Which recording plays:**
+  1. A local preview: `VITE_NEX_VOICE_PREVIEW` in the Git-ignored `.env.local`, for example the Azure F0 "Ryan" audition in Git-ignored `public/audio/*.placeholder.*`.
+  2. Otherwise `LICENSED_RECORDING`.
+  3. Otherwise **text-only**, the deliberate production configuration until a licensed recording exists. It has no audio controls and passes CI.
+- **Build guard** (`scripts/postbuild.mjs`):
+  - In CI, any `.placeholder.` audio file, or any reference to one in the built HTML or JavaScript, fails the build. Nothing is removed silently.
+  - A declared licensed recording must exist and must not be a placeholder.
+  - The build log states which configuration was built.
+- **Licensing:** F0 audio is for private auditions only. The Azure Product Terms permit commercial use of prebuilt neural voice output for paid-tier customers, so a published Azure recording must come from S0 (`scripts/voice/`).
+- **CSP:** `media-src 'self'` (docs/SECURITY.md).

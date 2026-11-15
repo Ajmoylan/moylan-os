@@ -566,15 +566,42 @@ describe("Engine transactional construction (fault injection)", () => {
 });
 
 describe("Engine size and pixel ratio", () => {
-  it("follows container resizes: camera aspect, renderer size and a new frame", () => {
+  it("follows container resizes: camera aspect, renderer size, an immediate redraw and a new frame", () => {
     const engine = create();
     engine.setLoop("demand");
     scheduler.frame();
+    expect(renderer.render).toHaveBeenCalledTimes(1);
     resize(1000, 500);
     expect(engine.camera.aspect).toBe(2);
     expect(renderer.setSize).toHaveBeenLastCalledWith(1000, 500, true);
-    scheduler.frame();
+    // The resize cleared the drawing buffer: the scene is drawn again at once (no blank flash).
     expect(renderer.render).toHaveBeenCalledTimes(2);
+    scheduler.frame();
+    expect(renderer.render).toHaveBeenCalledTimes(3);
+  });
+
+  it("never redraws on resize before the first frame, or while frames are stopped", () => {
+    const engine = create();
+    resize(1000, 500);
+    expect(renderer.render).not.toHaveBeenCalled(); // nothing drawn yet
+    engine.setLoop("always");
+    scheduler.frame();
+    engine.setLoop("never");
+    const drawn = renderer.render.mock.calls.length;
+    resize(900, 600);
+    expect(renderer.render).toHaveBeenCalledTimes(drawn);
+  });
+
+  it("a renderer that throws while redrawing after a resize fails the engine once", () => {
+    const fatal = vi.fn();
+    const engine = create({ onFatal: fatal });
+    engine.setLoop("demand");
+    scheduler.frame();
+    renderer.render.mockImplementation(() => {
+      throw new Error("lost");
+    });
+    resize(1000, 500);
+    expect(fatal).toHaveBeenCalledTimes(1);
   });
 
   it("clamps the device ratio to the range, applying it only when it changes", () => {

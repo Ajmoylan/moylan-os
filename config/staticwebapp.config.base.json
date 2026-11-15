@@ -11,7 +11,7 @@
     }
   ],
   "globalHeaders": {
-    "Content-Security-Policy": "default-src 'none'; script-src 'self' __INLINE_SCRIPT_HASHES__; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; upgrade-insecure-requests",
+    "Content-Security-Policy": "default-src 'none'; script-src 'self' __INLINE_SCRIPT_HASHES__; style-src 'self'; img-src 'self'; media-src 'self'; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; upgrade-insecure-requests",
     "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "strict-origin-when-cross-origin",
@@ -22,6 +22,7 @@
     "Cache-Control": "no-cache"
   },
   "mimeTypes": {
-    ".woff2": "font/woff2"
+    ".woff2": "font/woff2",
+    ".m4a": "audio/mp4"
   }
 }

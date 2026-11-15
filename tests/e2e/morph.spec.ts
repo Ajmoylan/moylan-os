@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { stubDevice } from "./device";
 import { expect, test } from "./fixtures";
+import { MORPH_TEST_BUILD, requireMorphTestBuild } from "./morph-build";
 
 /**
  * The first real morph (Milestone 2.4b.2 stage D), with a real renderer and real client-side
@@ -115,7 +116,27 @@ test("without the switch TEST is never loaded and /engineering keeps today's beh
   await page.waitForFunction(() => "__reactRouterRouteModules" in window);
   await toEngineering(page);
   await expect(page).toHaveURL(/\/engineering$/);
-  await expect(stage(page)).toHaveAttribute("data-agent-state", "hidden"); // NEX fades out
+  // NEX, the drawn agent, accompanies the visitor to /engineering (launch sprint: its heading spot
+  // on wide screens, the companion dock on narrow ones); no other agent is drawn.
+  await expect(stage(page)).toHaveAttribute("data-agent-state", "visible");
+  expect(chunks.filter((url) => /\/assets\/test-[^/]*\.js$/.test(url))).toEqual([]);
+  await expect(stage(page)).not.toHaveAttribute("data-test-state", /./);
+  expect(await read(page, "__states")).not.toContain("preparing");
+});
+
+test("in a production build ?morph=test is inert: TEST is never loaded or drawn", async ({
+  page,
+}) => {
+  test.skip(MORPH_TEST_BUILD, "this build includes the development-only TEST diagnostic");
+  const chunks: string[] = [];
+  page.on("request", (request) => chunks.push(request.url()));
+  await instrument(page);
+  await page.goto("/?morph=test");
+  await expect(stage(page)).toHaveAttribute("data-nex-formed", "true");
+  await page.waitForFunction(() => "__reactRouterRouteModules" in window);
+  await toEngineering(page);
+  await expect(page).toHaveURL(/\/engineering$/);
+  await expect(stage(page)).toHaveAttribute("data-agent-state", "visible");
   expect(chunks.filter((url) => /\/assets\/test-[^/]*\.js$/.test(url))).toEqual([]);
   await expect(stage(page)).not.toHaveAttribute("data-test-state", /./);
   expect(await read(page, "__states")).not.toContain("preparing");
@@ -125,6 +146,7 @@ test("?morph=test: NEX morphs into TEST on navigation, and back, within the draw
   page,
   isMobile,
 }) => {
+  requireMorphTestBuild();
   await instrument(page);
   await page.goto("/?morph=test");
   await expect(stage(page)).toHaveAttribute("data-nex-formed", "true");
@@ -160,6 +182,7 @@ test("?morph=test: NEX morphs into TEST on navigation, and back, within the draw
 });
 
 test("?morph=test with Reduced Motion: TEST appears formed at once, no morph", async ({ page }) => {
+  requireMorphTestBuild();
   await page.emulateMedia({ reducedMotion: "reduce" });
   await instrument(page);
   await page.goto("/?morph=test");
@@ -176,6 +199,7 @@ test("?morph=test with Reduced Motion: TEST appears formed at once, no morph", a
 test("?morph=test, rapid navigation: the latest destination wins, nothing left over", async ({
   page,
 }) => {
+  requireMorphTestBuild();
   await instrument(page);
   await page.goto("/?morph=test");
   await expect(stage(page)).toHaveAttribute("data-nex-formed", "true");
@@ -196,6 +220,7 @@ test("?morph=test, rapid navigation: the latest destination wins, nothing left o
 test("?morph=test, context lost mid-morph: restored with the latest destination drawn", async ({
   page,
 }) => {
+  requireMorphTestBuild();
   await instrument(page);
   await page.goto("/?morph=test");
   await expect(stage(page)).toHaveAttribute("data-nex-formed", "true");
@@ -227,6 +252,7 @@ async function chooseMotion(page: Page, option: "Full" | "Reduced" | "Off") {
 test("?morph=test, motion set to Off mid-morph: the static design; Full returns to the latest agent", async ({
   page,
 }) => {
+  requireMorphTestBuild();
   await instrument(page);
   await page.goto("/?morph=test");
   await expect(stage(page)).toHaveAttribute("data-nex-formed", "true");
@@ -244,6 +270,7 @@ test("?morph=test, motion set to Off mid-morph: the static design; Full returns 
 test("?morph=test, motion set to Reduced mid-morph: the destination at once, formed and still", async ({
   page,
 }) => {
+  requireMorphTestBuild();
   await instrument(page);
   await page.goto("/?morph=test");
   await expect(stage(page)).toHaveAttribute("data-nex-formed", "true");
@@ -260,6 +287,7 @@ test("?morph=test, motion set to Reduced mid-morph: the destination at once, for
 test("?morph=test, navigation while the tab is hidden: one swap at the first visible frame", async ({
   page,
 }) => {
+  requireMorphTestBuild();
   await instrument(page);
   await page.addInitScript(() => {
     const w = window as unknown as { __hidden: boolean };

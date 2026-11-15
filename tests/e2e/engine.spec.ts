@@ -86,7 +86,7 @@ const draws = (page: Page) =>
 
 async function expectStaticFallback(page: Page) {
   await expect(stage(page)).toHaveCount(0);
-  await expect(page.locator("canvas")).toHaveCount(0);
+  await expect(page.locator("canvas:not([data-nex-mirror])")).toHaveCount(0);
   await expect(emblem(page)).toBeVisible();
   await expect(poster(page)).toHaveCSS("opacity", "1");
 }
@@ -252,7 +252,7 @@ test("repeated loss and restore keep one canvas, one loop and the exact draw cal
   expect(await drawsPerFrame(page)).toBe(expected);
   for (let cycle = 0; cycle < 2; cycle++) {
     await loseAndRestore(page);
-    await expect(page.locator("canvas")).toHaveCount(1);
+    await expect(page.locator("canvas:not([data-nex-mirror])")).toHaveCount(1);
     // A duplicated loop or layer set would multiply the draws per frame.
     expect(await drawsPerFrame(page)).toBe(expected);
     await expect(stage(page)).toHaveAttribute("data-nex-particles", /^\d+$/);

@@ -13,6 +13,9 @@
  *    page loads up front, and the lazily loaded 3D stage chunk (including any chunks it imports
  *    dynamically), which must never be part of the initial set.
  * 7. Generates sitemap.xml from the prerendered pages.
+ * 8. NEX's voice (launch sprint): only a licensed recording may be published. In CI, any
+ *    `.placeholder.` audio file or reference in the output fails the build; a declared licensed
+ *    recording must exist; without one the site is deliberately text-only.
  */
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
@@ -175,6 +178,60 @@ if (stageBytes > TARGET_STAGE_GZ) {
   );
 }
 
+// 8. NEX's voice ---------------------------------------------------------------------------
+// Only a licensed recording may ever be published. Local auditions and stand-ins are
+// `.placeholder.` files (Git-ignored), wired in only through a local `.env.local` preview
+// setting. In CI any trace of one fails the build (nothing is removed silently). Without a
+// licensed recording the site is deliberately text-only, which passes.
+const voiceSource = await readFile(join(root, "src", "content", "voice.ts"), "utf8");
+const licensedMatch = voiceSource.match(/LICENSED_RECORDING: string \| null = (null|"([^"]+)")/);
+if (!licensedMatch) fail("src/content/voice.ts must declare LICENSED_RECORDING.");
+const licensed = licensedMatch[2] ?? null;
+const ci = Boolean(process.env.CI);
+const placeholderFiles = files.filter((file) => file.includes(".placeholder."));
+const placeholderRefs = [];
+for (const file of files.filter((f) => f.endsWith(".js") || f.endsWith(".html"))) {
+  if ((await readFile(file, "utf8")).includes(".placeholder.")) placeholderRefs.push(file);
+}
+if (licensed?.includes(".placeholder.")) fail(`LICENSED_RECORDING is a placeholder (${licensed}).`);
+if (licensed && !existsSync(join(outDir, ...licensed.split("/").filter(Boolean)))) {
+  fail(`NEX's licensed recording ${licensed} is missing from the build.`);
+}
+if (ci && (placeholderFiles.length > 0 || placeholderRefs.length > 0)) {
+  fail(
+    "a local placeholder recording would be published: " +
+      [...placeholderFiles, ...placeholderRefs].map((f) => relative(root, f)).join(", "),
+  );
+}
+
+// The first-morph TEST diagnostic is development-only (MORPH_TEST_BUILD in src/experience/Stage.tsx):
+// only a build made with VITE_MORPH_TEST=1 (`npm run build:morph-test`, for the morph e2e tests) may
+// contain it. `uTFrames` is a uniform only TEST's shaders declare (tests/e2e/morph-build.ts too).
+const morphTestBuild = process.env.VITE_MORPH_TEST === "1";
+const morphTestFiles = [];
+for (const file of files.filter((f) => f.endsWith(".js"))) {
+  if ((await readFile(file, "utf8")).includes("uTFrames")) morphTestFiles.push(file);
+}
+if (!morphTestBuild && morphTestFiles.length > 0) {
+  fail(
+    "the development-only TEST morph diagnostic would be published: " +
+      morphTestFiles.map((f) => relative(root, f)).join(", "),
+  );
+}
+if (morphTestBuild) {
+  console.warn(
+    "\n⚠ postbuild: development-only TEST morph diagnostic included (VITE_MORPH_TEST=1). Never deploy this build.\n",
+  );
+}
+
+const voiceMode =
+  placeholderRefs.length > 0
+    ? "local preview recording (never deployed)"
+    : licensed
+      ? `licensed recording ${licensed}`
+      : "text-only (no licensed recording yet)";
+if (placeholderRefs.length > 0) console.warn(`\n⚠ postbuild: NEX's voice is a ${voiceMode}.\n`);
+
 // 7. Sitemap -----------------------------------------------------------------------------------
 const pages = htmlFiles
   .filter((file) => file.endsWith(`${sep}index.html`) || file === join(outDir, "index.html"))
@@ -193,7 +250,7 @@ await writeFile(join(outDir, "sitemap.xml"), sitemap);
 
 console.log(
   `✔ postbuild: ${htmlFiles.length} HTML files checked, ${hashes.size} inline script hashes in CSP, ` +
-    `config ${(size / 1024).toFixed(1)} KB, ${pages.length} URLs in sitemap.\n` +
+    `config ${(size / 1024).toFixed(1)} KB, ${pages.length} URLs in sitemap, NEX's voice: ${voiceMode}.\n` +
     `  budgets: initial JS ≤ ${(largestInitial.bytes / 1024).toFixed(1)} KB gz (largest: ${largestInitial.page}; ` +
     `budget ${BUDGET_INITIAL_JS_GZ / 1024} KB), lazy 3D stage ${(stageBytes / 1024).toFixed(1)} KB gz ` +
     `(budget ${BUDGET_STAGE_JS_GZ / 1024} KB; ${TARGET_STAGE_PHASE} review target ${TARGET_STAGE_GZ / 1024} KB).`,

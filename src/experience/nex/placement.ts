@@ -17,6 +17,25 @@ export interface Rect {
   top: number;
   width: number;
   height: number;
+  /**
+   * Launch sprint: keep NEX's whole footprint (rings and halo, `REACH` × its ring radius) inside
+   * the viewport, below the sticky header, as if NEX were `position: sticky` to its anchor.
+   */
+  contain?: boolean;
+}
+
+/** NEX's footprint: the halo reaches ≈ 1.5 × the ring radius. */
+export const REACH = 1.5;
+/** Kept clear when NEX is contained: the sticky header (4rem) above, a small margin all round. */
+export const CONTAIN_TOP_PX = 64;
+export const CONTAIN_MARGIN_PX = 12;
+
+/**
+ * Clamps `value` into [lo, hi]; when the range is empty (NEX larger than the space) its middle.
+ * Continuous in `value`, so a contained NEX never jumps while the page scrolls.
+ */
+function within(value: number, lo: number, hi: number): number {
+  return lo > hi ? (lo + hi) / 2 : Math.min(Math.max(value, lo), hi);
 }
 
 export interface Placement {
@@ -38,11 +57,15 @@ export function placeNex(
 ): Placement {
   const unitsPerPixel =
     (2 * CAMERA_DISTANCE * Math.tan((fovDegrees * Math.PI) / 360)) / Math.max(1, viewport.height);
-  const cx = rect.left + rect.width / 2;
-  const cy = rect.top + rect.height / 2;
+  let cx = rect.left + rect.width / 2;
+  let cy = rect.top + rect.height / 2;
   const radiusPx = (Math.min(rect.width, rect.height) / 2) * FILL;
-  // The halo reaches ≈ 1.5 × the ring radius.
-  const reach = radiusPx * 1.5;
+  const reach = radiusPx * REACH;
+  if (rect.contain) {
+    const m = CONTAIN_MARGIN_PX;
+    cx = within(cx, reach + m, viewport.width - reach - m);
+    cy = within(cy, CONTAIN_TOP_PX + reach + m, viewport.height - reach - m);
+  }
   out.x = (cx - viewport.width / 2) * unitsPerPixel;
   out.y = (viewport.height / 2 - cy) * unitsPerPixel;
   out.scale = (radiusPx * unitsPerPixel) / NEX_SHELL_RADIUS;

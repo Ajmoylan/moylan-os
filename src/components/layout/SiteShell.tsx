@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import { NexCompanion } from "~/components/nex/NexCompanion";
+import { NexMenu } from "~/components/nex/NexMenu";
 import { MotionSync } from "~/motion/MotionSync";
 import { RouteAnnouncer } from "./RouteAnnouncer";
 import { ScrollManager } from "./ScrollManager";
@@ -22,6 +24,8 @@ export function SiteShell({ children }: { children: ReactNode }) {
         {children}
       </main>
       <SiteFooter />
+      <NexCompanion />
+      <NexMenu />
       <RouteAnnouncer />
       <ScrollManager />
     </>

@@ -99,8 +99,8 @@ void main() {
 
 /** The pair program's vertex shader: slot A's module, slot B's, then the morph's `main()`. */
 export function pairVertexShader(slotA: string, slotB: string): string {
-  if (!/void particleA\(/.test(slotA)) throw new Error("Slot A module without particleA()");
-  if (!/void particleB\(/.test(slotB)) throw new Error("Slot B module without particleB()");
+  if (!/void particleA\(/.test(slotA)) throw new Error("No particleA()");
+  if (!/void particleB\(/.test(slotB)) throw new Error("No particleB()");
   return `${slotA}\n${slotB}\n${MORPH_MAIN}`;
 }
 
@@ -117,11 +117,11 @@ export function createPairMaterial(
 ): ShaderMaterial {
   const uniforms: Record<string, IUniform> = { ...uniformsA };
   for (const [name, uniform] of Object.entries(uniformsB)) {
-    if (name in uniforms) throw new Error(`Morph uniform "${name}" is declared by both slots`);
+    if (name in uniforms) throw new Error(`Duplicate morph uniform ${name}`);
     uniforms[name] = uniform;
   }
   for (const reserved of ["uMorph", "uLight"]) {
-    if (reserved in uniforms) throw new Error(`Morph uniform "${reserved}" is reserved`);
+    if (reserved in uniforms) throw new Error(`Reserved morph uniform ${reserved}`);
   }
   uniforms.uMorph = { value: 0 };
   uniforms.uLight = { value: 0 };

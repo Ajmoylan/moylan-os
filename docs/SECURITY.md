@@ -167,6 +167,7 @@ default-src 'none';
 script-src 'self' <build-generated sha256 hashes of inline scripts>;
 style-src 'self';
 img-src 'self';
+media-src 'self';
 font-src 'self';
 connect-src 'self';
 manifest-src 'self';
@@ -180,6 +181,7 @@ upgrade-insecure-requests
 - **No `unsafe-inline`, no `unsafe-eval`.** React Router's prerendered pages contain a few small inline bootstrap scripts. A post-build step computes their SHA-256 hashes and writes them into the CSP. Any unexpected inline script is blocked.
 - **No inline `style` attributes in prerendered HTML.** Per-agent colours use `data-agent` attributes and CSS classes. Runtime style changes made by JavaScript (GSAP, later milestones) use the CSSOM and are permitted.
 - Fonts and all assets are **self-hosted**: no Google Fonts, CDNs or third-party origins.
+- `media-src 'self'` (launch sprint): NEX's spoken introduction is one prerecorded audio file served from this site (`public/audio/`), played only when the visitor asks. No speech service, no third-party origin.
 - Future additions are deliberate, reviewed CSP changes. If shape generation moves to a Web Worker, the only addition is `worker-src 'self'`: Vite emits workers as hashed same-origin files. **`blob:` workers are not permitted** unless a specific technical need is documented and reviewed (ARCHITECTURE §9.4). The v2 API stays same-origin under `connect-src 'self'`.
 - A Playwright test serves the production build with the real headers and fails on any CSP violation.
 - Planned hardening: evaluate Trusted Types (`require-trusted-types-for 'script'`) in report-only mode after the 3D milestones.

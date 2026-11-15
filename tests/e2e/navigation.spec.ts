@@ -35,9 +35,9 @@ test.describe("without JavaScript", () => {
   test("the prerendered homepage is complete and navigable", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1, name: "Alex Moylan" })).toBeVisible();
-    await expect(
-      page.getByText("Welcome to MOYLAN//OS. What would you like to explore?"),
-    ).toBeVisible();
+    await expect(page.locator("#nex-intro")).toContainText(
+      /Hello\. I'm NEX\. Welcome to MOYLAN\/\/OS/,
+    );
     const pathways = page.getByRole("region", { name: "Choose an environment" });
     await expect(pathways.getByRole("link")).toHaveCount(5);
     await pathways.getByRole("link", { name: "Cloud & Security" }).click();

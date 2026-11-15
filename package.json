@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "react-router dev",
     "build": "react-router build && node scripts/postbuild.mjs",
+    "build:morph-test": "VITE_MORPH_TEST=1 npm run build",
     "preview": "node scripts/serve-static.mjs",
     "typecheck": "react-router typegen && tsc",
     "lint": "eslint .",
@@ -18,6 +19,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:e2e:morph": "playwright test tests/e2e/morph.spec.ts tests/e2e/viability.spec.ts",
     "audit:prod": "npm audit --omit=dev --audit-level=high",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build && npm run test:e2e",
     "audit:all": "npm audit --audit-level=high"
