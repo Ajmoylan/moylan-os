@@ -412,17 +412,32 @@ export class Engine {
   /**
    * Resizing the drawing buffer clears it, and the browser may show the cleared canvas before the
    * next animation frame (a resize observed after this frame was drawn): a blank flash. So once the
-   * scene has been drawn, it is drawn again at once with the new size (the layers' state is the last
-   * frame's; the next frame updates them as usual). Never while frames are stopped.
+   * scene has been drawn, a frame is drawn at once with the new size: the layers update first (with
+   * the time elapsed so far), so everything is placed for the new viewport, not the old one. Never
+   * while frames are stopped.
    */
   private redrawAfterResize(): void {
     if (!this.drawn || this.loop === "never" || this.width <= 0 || this.height <= 0) return;
     try {
-      this.renderer.render(this.scene, this.camera);
-      for (const layer of this.layers) layer.afterRender?.(this);
+      this.drawFrame();
     } catch (error) {
       this.fail(error);
     }
+  }
+
+  /** One frame: the layers in phase order, the scene, then the layers' after-render step. */
+  private drawFrame(): boolean {
+    const now = this.scheduler.now();
+    const delta = (now - this.last) / 1000;
+    this.last = now;
+    // Layers are kept in phase order: simulate, then update; then the scene is drawn.
+    for (const layer of this.layers) {
+      layer.update(this, delta);
+      if (this.state !== "active") return false;
+    }
+    this.renderer.render(this.scene, this.camera);
+    for (const layer of this.layers) layer.afterRender?.(this);
+    return true;
   }
 
   private schedule(): void {
@@ -443,18 +458,9 @@ export class Engine {
     if (this.loop === "demand" && this.frames === 0) return;
     // Consumed before the layers run, so an invalidation during this frame asks for one more.
     this.frames = 0;
-    const now = this.scheduler.now();
-    const delta = (now - this.last) / 1000;
-    this.last = now;
     if (this.width > 0 && this.height > 0) {
       try {
-        // Layers are kept in phase order: simulate, then update; then the scene is drawn.
-        for (const layer of this.layers) {
-          layer.update(this, delta);
-          if (this.state !== "active") return;
-        }
-        this.renderer.render(this.scene, this.camera);
-        for (const layer of this.layers) layer.afterRender?.(this);
+        if (!this.drawFrame()) return;
         if (!this.drawn) {
           this.drawn = true;
           this.options.onFirstFrame?.();
@@ -463,6 +469,8 @@ export class Engine {
         this.fail(error);
         return;
       }
+    } else {
+      this.last = this.scheduler.now();
     }
     if (this.state === "active" && (this.loop === "always" || this.frames > 0)) this.schedule();
   };

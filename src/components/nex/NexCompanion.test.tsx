@@ -3,14 +3,16 @@ import { createRoutesStub } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NexCompanion } from "./NexCompanion";
 import { NexSlot } from "./NexSlot";
-import { setNexMinimised } from "./placement";
+import { setNexMinimised, setNexPlacement } from "./placement";
 
 /** Companion mode: the route's own NEX spot while in view, else the dock; minimise; one launcher. */
 
 let observe: (ratio: number) => void = () => {};
+let observers = 0;
 class FakeObserver {
   constructor(private readonly callback: IntersectionObserverCallback) {}
   observe() {
+    observers++;
     observe = (ratio) =>
       this.callback(
         [{ isIntersecting: ratio > 0, intersectionRatio: ratio } as IntersectionObserverEntry],
@@ -36,14 +38,22 @@ function page() {
 }
 const anchor = () =>
   document.querySelector('[data-stage-anchor="nex"]')?.getAttribute("data-nex-slot");
+let width: ReturnType<typeof vi.spyOn>;
+/** A viewport change that shows or hides the page's spot (e.g. a rotation across 64rem). */
+const relayout = async (spotWidth: number) => {
+  width.mockReturnValue(spotWidth);
+  await act(async () => window.dispatchEvent(new Event("resize")));
+};
 const launchers = () => screen.queryAllByRole("button", { name: "NEX: open site navigation" });
 
 beforeEach(() => {
   vi.stubGlobal("IntersectionObserver", FakeObserver);
   // jsdom has no layout: the spot reports a size.
-  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(300);
+  width = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(300);
   vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(300);
-  setNexMinimised(false, "page");
+  observers = 0;
+  setNexMinimised(false);
+  setNexPlacement("page");
 });
 afterEach(() => {
   cleanup();
@@ -73,7 +83,7 @@ describe("NexCompanion", () => {
     expect(launchers()[0]!.closest("[data-nex-dock]")).not.toBeNull();
   });
 
-  it("minimise hides NEX for the visit (no anchor) and Show NEX brings him back to the dock", async () => {
+  it("minimise hides NEX for the visit; Show NEX brings him back to the page's spot when it is in view", async () => {
     page();
     await act(async () => observe(0));
     fireEvent.click(screen.getByRole("button", { name: "Minimise NEX" }));
@@ -82,6 +92,38 @@ describe("NexCompanion", () => {
     await act(async () => observe(0.9));
     expect(anchor()).toBeUndefined(); // stays minimised while scrolling
     fireEvent.click(screen.getByRole("button", { name: "Show NEX" }));
+    expect(anchor()).toBe("hero"); // the spot is in view: not the dock
+  });
+
+  it("Show NEX brings him back to the dock when the page's spot is scrolled away", async () => {
+    page();
+    await act(async () => observe(0));
+    fireEvent.click(screen.getByRole("button", { name: "Minimise NEX" }));
+    await act(async () => observe(0.9));
+    await act(async () => observe(0.1)); // scrolled away again while minimised
+    fireEvent.click(screen.getByRole("button", { name: "Show NEX" }));
     expect(anchor()).toBe("dock");
+  });
+
+  it("rotating to a layout that shows the page's spot moves NEX there; hiding it docks him", async () => {
+    width.mockReturnValue(0); // narrow layout: the dedicated page hides its spot
+    page();
+    expect(anchor()).toBe("dock");
+    expect(observers).toBe(0);
+    await relayout(300); // wide layout: the spot is laid out
+    expect(observers).toBe(1);
+    await act(async () => observe(0.8));
+    expect(anchor()).toBe("hero");
+    await relayout(0); // back to narrow
+    expect(anchor()).toBe("dock");
+  });
+
+  it("an ordinary resize moves nothing (NEX stays docked while the spot is scrolled away)", async () => {
+    page();
+    await act(async () => observe(0));
+    expect(anchor()).toBe("dock");
+    await relayout(320); // still laid out: same decision, no new observer
+    expect(anchor()).toBe("dock");
+    expect(observers).toBe(1);
   });
 });

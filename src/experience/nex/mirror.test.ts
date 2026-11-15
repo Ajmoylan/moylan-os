@@ -37,7 +37,7 @@ function setup() {
       mirror.afterRender(engine);
     }
   };
-  return { target, transition, mirror, frames };
+  return { target, source, transition, mirror, frames };
 }
 
 beforeEach(() => {
@@ -72,6 +72,21 @@ describe("CompanionMirror", () => {
     frames(1);
     expect(target.hasAttribute("data-visible")).toBe(true);
     expect(drawImage).toHaveBeenCalledTimes(1);
+  });
+
+  it("a new device-pixel ratio (no window resize) re-measures the copied region", () => {
+    const { target, source, transition, frames } = setup();
+    frames(60);
+    target.dataset.active = "true";
+    transition.placement.gliding = false;
+    frames(1);
+    // DPR 2: the dock at (300, 700) CSS px, 120 px wide, is at (600, 1400) in the drawing buffer.
+    expect(drawImage).toHaveBeenLastCalledWith(source, 600, 1400, 240, 240, 0, 0, 240, 240);
+    // Adaptive quality lowers the stage's ratio to 1.5: only the drawing buffer changes size.
+    source.width = 585;
+    frames(1);
+    expect(drawImage).toHaveBeenLastCalledWith(source, 450, 1050, 180, 180, 0, 0, 180, 180);
+    expect(target.width).toBe(180);
   });
 
   it("leaving the dock: fades out while still copying, then stops", () => {

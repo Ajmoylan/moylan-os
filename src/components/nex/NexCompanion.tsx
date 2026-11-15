@@ -28,26 +28,45 @@ export function NexCompanion() {
   const { pathname } = useLocation();
   const first = useRef(true);
 
-  // Director: the route's primary spot, or the dock.
+  // Director: the route's primary spot, or the dock. Whether the spot is laid out is checked again
+  // after viewport changes (a rotation between the narrow layout, where dedicated pages hide it, and
+  // the wide one); only a change of that answer re-decides, so ordinary resizes move nothing.
   useEffect(() => {
     const spot = document.querySelector<HTMLElement>("[data-nex-primary]");
-    const laidOut = spot !== null && spot.offsetWidth > 0 && spot.offsetHeight > 0;
-    if (!laidOut || typeof IntersectionObserver !== "function") {
-      setNexPlacement(laidOut ? "page" : "dock");
-      return;
-    }
-    setNexPlacement("page");
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry) return;
-        const ratio = entry.isIntersecting ? entry.intersectionRatio : 0;
-        if (ratio >= RETURN) setNexPlacement("page");
-        else if (ratio < STAY) setNexPlacement("dock");
-      },
-      { threshold: [0, STAY, RETURN, 1] },
-    );
-    observer.observe(spot);
-    return () => observer.disconnect();
+    const observable = typeof IntersectionObserver === "function";
+    let observer: IntersectionObserver | null = null;
+    let laidOut: boolean | null = null;
+    const decide = (initial: boolean) => {
+      const now = spot !== null && spot.offsetWidth > 0 && spot.offsetHeight > 0;
+      if (now === laidOut) return;
+      laidOut = now;
+      observer?.disconnect();
+      observer = null;
+      if (!now || !observable) {
+        setNexPlacement(now ? "page" : "dock");
+        return;
+      }
+      // A route's own spot starts with NEX in it; after a layout change the observer's first report
+      // places him (in view: the spot; scrolled away: he stays docked).
+      if (initial) setNexPlacement("page");
+      observer = new IntersectionObserver(
+        ([entry]) => {
+          if (!entry) return;
+          const ratio = entry.isIntersecting ? entry.intersectionRatio : 0;
+          if (ratio >= RETURN) setNexPlacement("page");
+          else if (ratio < STAY) setNexPlacement("dock");
+        },
+        { threshold: [0, STAY, RETURN, 1] },
+      );
+      observer.observe(spot!);
+    };
+    decide(true);
+    const onResize = () => decide(false);
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      observer?.disconnect();
+    };
   }, [pathname]);
 
   // After the new anchor has committed, the stage looks it up (and NEX glides there).
@@ -80,20 +99,16 @@ export function NexCompanion() {
             popoverTarget={NEX_MENU_ID}
             aria-label="NEX: open site navigation"
             className="nex-launcher absolute inset-[12%] cursor-pointer rounded-full"
-            onPointerEnter={() => signalNex("hold")}
-            onPointerLeave={() => signalNex("release")}
-            onFocus={() => signalNex("hold")}
-            onBlur={() => signalNex("release")}
+            onPointerEnter={() => signalNex("hold", "pointer")}
+            onPointerLeave={() => signalNex("release", "pointer")}
+            onFocus={() => signalNex("hold", "focus")}
+            onBlur={() => signalNex("release", "focus")}
             onClick={() => signalNex("pulse")}
           />
         )}
       </div>
       {placement === "hidden" ? (
-        <button
-          type="button"
-          className="nex-dock-show"
-          onClick={() => setNexMinimised(false, "dock")}
-        >
+        <button type="button" className="nex-dock-show" onClick={() => setNexMinimised(false)}>
           <span aria-hidden="true" className="nex-dock-dot" />
           Show NEX
         </button>
@@ -103,7 +118,7 @@ export function NexCompanion() {
             type="button"
             className="nex-dock-hide"
             aria-label="Minimise NEX"
-            onClick={() => setNexMinimised(true, "dock")}
+            onClick={() => setNexMinimised(true)}
           >
             <span aria-hidden="true">–</span>
           </button>

@@ -313,6 +313,36 @@ describe("containment inside the viewport (launch sprint)", () => {
     expect(a.y).toBe(b.y);
   });
 
+  it("with browser toolbars shown, keeps NEX above them (the visible viewport, not the stage's 100lvh)", () => {
+    // iPad Safari: the stage is 800 px tall (large viewport); toolbars leave 720 px visible.
+    const visible = 720;
+    for (let top = 600; top >= -900; top -= 50) {
+      const y = screenY(placeNex({ ...box(top, true), viewHeight: visible }, viewport, fov));
+      expect(y + reach).toBeLessThanOrEqual(visible - CONTAIN_MARGIN_PX + 1e-6);
+    }
+    // No toolbar (or no measurement): the stage's own height, exactly as before.
+    expect(placeNex({ ...box(600, true), viewHeight: 0 }, viewport, fov)).toEqual(
+      placeNex(box(600, true), viewport, fov),
+    );
+    expect(placeNex({ ...box(600, true), viewHeight: 900 }, viewport, fov)).toEqual(
+      placeNex(box(600, true), viewport, fov),
+    );
+  });
+
+  it("the tracker records the visible viewport's height, re-measured when toolbars change it", () => {
+    const tracker = new AnchorTracker(window, () => {});
+    tracker.attach();
+    const height = vi.spyOn(window, "innerHeight", "get").mockReturnValue(720);
+    tracker.setElement(anchorElement());
+    const first = tracker.version;
+    expect(tracker.read().viewHeight).toBe(720);
+    height.mockReturnValue(780); // the toolbar collapses: a window resize
+    window.dispatchEvent(new Event("resize"));
+    expect(tracker.read().viewHeight).toBe(780);
+    expect(tracker.version).toBeGreaterThan(first);
+    tracker.detach();
+  });
+
   it("the tracker reads the anchor's containment media query when it measures", () => {
     const tracker = new AnchorTracker(window, () => {});
     tracker.attach();

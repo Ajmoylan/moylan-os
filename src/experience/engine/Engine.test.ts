@@ -580,6 +580,18 @@ describe("Engine size and pixel ratio", () => {
     expect(renderer.render).toHaveBeenCalledTimes(3);
   });
 
+  it("the immediate redraw updates the layers for the new size first (nothing drawn at stale positions)", () => {
+    const engine = create();
+    const seen: string[] = [];
+    engine.add(layer("update", () => seen.push(`update ${engine.width}x${engine.height}`)));
+    renderer.render.mockImplementation(() => seen.push(`render ${engine.width}x${engine.height}`));
+    engine.setLoop("demand");
+    scheduler.frame();
+    seen.length = 0;
+    resize(1000, 500);
+    expect(seen).toEqual(["update 1000x500", "render 1000x500"]);
+  });
+
   it("never redraws on resize before the first frame, or while frames are stopped", () => {
     const engine = create();
     resize(1000, 500);

@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NEX_ATTENTION_EVENT } from "~/lib/nex-events";
+import { NEX_ATTENTION_EVENT, type NexAttentionDetail } from "~/lib/nex-events";
 import { NexTransmission, pauseAfter, schedule } from "./NexTransmission";
 
 /** NEX // TRANSMISSION: typing, pauses, skipping, Reduced Motion and assistive technology. */
@@ -91,7 +91,12 @@ describe("NexTransmission", () => {
 
   it("NEX's core responds: attention held while transmitting, pulses at sentences, released", async () => {
     const kinds: string[] = [];
-    const listen = (event: Event) => kinds.push((event as CustomEvent<string>).detail);
+    const sources = new Set<string | undefined>();
+    const listen = (event: Event) => {
+      const { kind, source } = (event as CustomEvent<NexAttentionDetail>).detail;
+      kinds.push(kind);
+      if (kind !== "pulse") sources.add(source);
+    };
     window.addEventListener(NEX_ATTENTION_EVENT, listen);
     render(<NexTransmission message={MESSAGE} />);
     await act(async () => vi.advanceTimersByTime(6000));
@@ -99,5 +104,6 @@ describe("NexTransmission", () => {
     expect(kinds[0]).toBe("hold");
     expect(kinds.filter((k) => k === "pulse").length).toBeGreaterThanOrEqual(2);
     expect(kinds.at(-1)).toBe("release");
+    expect([...sources]).toEqual(["transmission"]); // its own hold, never another's
   });
 });

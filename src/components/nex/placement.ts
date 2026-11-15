@@ -11,21 +11,27 @@ import { useSyncExternalStore } from "react";
 export type NexPlacement = "page" | "dock" | "hidden";
 
 let placement: NexPlacement = "page";
+/** Where the director wants NEX (kept current while he is minimised, for "Show NEX"). */
+let wanted: Exclude<NexPlacement, "hidden"> = "page";
 let minimised = false;
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((listener) => listener());
 
 export function setNexPlacement(next: Exclude<NexPlacement, "hidden">): void {
+  wanted = next;
   const resolved: NexPlacement = minimised ? "hidden" : next;
   if (resolved === placement) return;
   placement = resolved;
   emit();
 }
 
-/** Minimise (hide) NEX for the rest of the visit, or bring him back to `restore`. */
-export function setNexMinimised(value: boolean, restore: Exclude<NexPlacement, "hidden">): void {
+/**
+ * Minimise (hide) NEX for the rest of the visit, or bring him back to where the director wants him
+ * now (the page's own spot if it is in view, otherwise the dock).
+ */
+export function setNexMinimised(value: boolean): void {
   minimised = value;
-  placement = value ? "hidden" : restore;
+  placement = value ? "hidden" : wanted;
   emit();
 }
 

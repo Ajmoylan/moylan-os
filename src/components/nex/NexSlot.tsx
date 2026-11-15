@@ -61,10 +61,10 @@ export function NexSlot({
           aria-label="NEX: open site navigation"
           aria-describedby={describedBy}
           className="nex-launcher absolute inset-[12%] cursor-pointer rounded-full"
-          onPointerEnter={() => signalNex("hold")}
-          onPointerLeave={() => signalNex("release")}
-          onFocus={() => signalNex("hold")}
-          onBlur={() => signalNex("release")}
+          onPointerEnter={() => signalNex("hold", "pointer")}
+          onPointerLeave={() => signalNex("release", "pointer")}
+          onFocus={() => signalNex("hold", "focus")}
+          onBlur={() => signalNex("release", "focus")}
           onClick={() => signalNex("pulse")}
         />
       )}

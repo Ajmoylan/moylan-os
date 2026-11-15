@@ -118,7 +118,20 @@ test.describe("with WebGL2 and full motion", () => {
     expect(overlaps).toBe(false);
   });
 
-  test("minimise hides NEX for the visit; Show NEX brings him back; navigation keeps the choice", async ({
+  test("rotating between the narrow and wide layouts moves NEX between the dock and the page's spot", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 820, height: 1180 }); // tablet portrait: spot hidden
+    await open(page, "/about");
+    await expect.poll(() => activeSlot(page)).toBe("dock");
+    await page.setViewportSize({ width: 1180, height: 820 }); // landscape: the heading's spot shows
+    await expect.poll(() => activeSlot(page)).toBe("page");
+    await expect(stage(page)).toHaveAttribute("data-nex-state", "visible");
+    await page.setViewportSize({ width: 820, height: 1180 });
+    await expect.poll(() => activeSlot(page)).toBe("dock");
+  });
+
+  test("minimise hides NEX for the visit; Show NEX brings him back to where he belongs; navigation keeps the choice", async ({
     page,
   }) => {
     await open(page, "/projects");
@@ -131,7 +144,9 @@ test.describe("with WebGL2 and full motion", () => {
     await expect(page).toHaveURL(/\/about$/);
     await expect(page.locator('[data-stage-anchor="nex"]')).toHaveCount(0);
     await page.getByRole("button", { name: "Show NEX" }).click();
-    await expect.poll(() => activeSlot(page)).toBe("dock");
+    // At the top of About: its heading spot is in view on wide screens (NEX returns there, not to the
+    // dock); narrow screens hide that spot, so he returns to the dock.
+    await expect.poll(() => activeSlot(page)).toBe(wide(page) ? "page" : "dock");
     await expect(stage(page)).toHaveAttribute("data-nex-state", "visible");
   });
 });

@@ -22,6 +22,12 @@ export interface Rect {
    * the viewport, below the sticky header, as if NEX were `position: sticky` to its anchor.
    */
   contain?: boolean;
+  /**
+   * The visible viewport's height (px) when the anchor was measured. With mobile browser toolbars
+   * shown it is shorter than the stage (100lvh), so containment keeps NEX above the toolbar.
+   * Absent or 0: the stage's height.
+   */
+  viewHeight?: number;
 }
 
 /** NEX's footprint: the halo reaches ≈ 1.5 × the ring radius. */
@@ -64,7 +70,8 @@ export function placeNex(
   if (rect.contain) {
     const m = CONTAIN_MARGIN_PX;
     cx = within(cx, reach + m, viewport.width - reach - m);
-    cy = within(cy, CONTAIN_TOP_PX + reach + m, viewport.height - reach - m);
+    const visible = Math.min(viewport.height, rect.viewHeight || viewport.height);
+    cy = within(cy, CONTAIN_TOP_PX + reach + m, visible - reach - m);
   }
   out.x = (cx - viewport.width / 2) * unitsPerPixel;
   out.y = (viewport.height / 2 - cy) * unitsPerPixel;

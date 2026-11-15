@@ -61,7 +61,7 @@ export function NexVoice() {
 
   const speaking = (on: boolean) => {
     document.getElementById("nex-intro")?.toggleAttribute("data-speaking", on);
-    signalNex(on ? "hold" : "release");
+    signalNex(on ? "hold" : "release", "voice");
   };
 
   // Feature detection in the browser; the prerendered page (server snapshot) offers the controls.

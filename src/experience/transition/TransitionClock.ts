@@ -1,5 +1,10 @@
 import type { AgentId } from "~/agents/registry";
-import { NEX_ANCHOR_EVENT, NEX_ATTENTION_EVENT, type NexAttention } from "~/lib/nex-events";
+import {
+  NEX_ANCHOR_EVENT,
+  NEX_ATTENTION_EVENT,
+  type NexAttentionDetail,
+  type NexHolder,
+} from "~/lib/nex-events";
 import type { EffectiveMotion } from "~/motion/policy";
 import { definitionFor, stageAgentFor } from "../agents/definitions";
 import type { AgentRenderDefinition, StageAgent } from "../agents/types";
@@ -19,6 +24,13 @@ import { spring, type Spring } from "../nex/look";
  * stage camera's field of view (the viewport is ≈ 2.87 world units tall at NEX's distance).
  */
 const GLIDE_MAX_SPEED = 7;
+/**
+ * A frame-to-frame step faster than this (world units, or log scale, per second) is a jump, not
+ * motion: a re-layout, a link to a section, a placement at once. It is left out of the velocity a
+ * glide inherits. Three times the glide's cap: well above any scroll a visitor carries NEX with.
+ */
+const JUMP_SPEED = 3 * GLIDE_MAX_SPEED;
+const JUMP_SCALE_SPEED = 9;
 import {
   resetVisibility,
   writePalette,
@@ -117,9 +129,20 @@ export class TransitionClock implements FrameLayer {
     y: { x: 0, v: 0 } as Spring,
     s: { x: 0, v: 0 } as Spring,
   };
-  private readonly motion = { x: 0, y: 0, s: 0, vx: 0, vy: 0, vs: 0, valid: false };
-  /** The visitor's pointer or focus is on NEX's launcher; a pulse is pending. */
-  private attentionHold = false;
+  private readonly motion = {
+    x: 0,
+    y: 0,
+    s: 0,
+    vx: 0,
+    vy: 0,
+    vs: 0,
+    valid: false,
+    /** The viewport the last sample was taken in (a new one is a new layout, not motion). */
+    width: 0,
+    height: 0,
+  };
+  /** Who holds NEX's attention now (pointer, focus, his transmission, his voice); a pulse is pending. */
+  private readonly attentionHolds = new Set<NexHolder>();
   private attentionPulse = false;
   private disposed = false;
   /** The machine's swap count already applied (a swap makes the new agent arrive). */
@@ -163,10 +186,10 @@ export class TransitionClock implements FrameLayer {
         engine.invalidate();
       };
       const onAttention = (event: Event) => {
-        const kind = (event as CustomEvent<NexAttention>).detail;
-        if (kind === "hold") this.attentionHold = true;
-        else if (kind === "release") this.attentionHold = false;
-        else if (kind === "pulse") this.attentionPulse = true;
+        const { kind, source } = (event as CustomEvent<NexAttentionDetail>).detail ?? {};
+        if (kind === "pulse") this.attentionPulse = true;
+        else if (source && kind === "hold") this.attentionHolds.add(source);
+        else if (source && kind === "release") this.attentionHolds.delete(source);
         engine.invalidate();
       };
       window.addEventListener(NEX_ANCHOR_EVENT, onAnchor);
@@ -242,7 +265,12 @@ export class TransitionClock implements FrameLayer {
       this.attentionPulse = false;
       v.attention = 1;
     }
-    v.attention = damp(v.attention, this.attentionHold ? ATTENTION_HOLD : 0, dt, ATTENTION_SECONDS);
+    v.attention = damp(
+      v.attention,
+      this.attentionHolds.size > 0 ? ATTENTION_HOLD : 0,
+      dt,
+      ATTENTION_SECONDS,
+    );
   }
 
   /** Projects the machine into the shared frame; a change of drawn agent restarts its appearance. */
@@ -319,6 +347,12 @@ export class TransitionClock implements FrameLayer {
     const placement = (definitionFor(this.anchored) ?? this.drawn).placement;
     const element = placement.kind === "anchor" ? document.querySelector(placement.selector) : null;
     const changed = this.anchor.setElement(element);
+    // NEX's launcher moves with his anchor: the old one is gone (it may have unmounted under the
+    // pointer or with focus, without a leave or blur), so its pointer and focus holds end.
+    if (changed) {
+      this.attentionHolds.delete("pointer");
+      this.attentionHolds.delete("focus");
+    }
     // A new anchor for an agent that is shown: glide there from where it is drawn now, even from
     // just off screen (it flies back in to accompany the visitor). Full Motion only, outside a
     // morph, which has its own placement segments.
@@ -402,7 +436,7 @@ export class TransitionClock implements FrameLayer {
       this.fov = camera.fov;
     }
     this.context.transition.placement.gliding = this.gliding;
-    this.track(displayed, dt);
+    this.track(displayed, dt, engine);
     if (!displayed.onScreen) return;
 
     if (full) {
@@ -451,25 +485,38 @@ export class TransitionClock implements FrameLayer {
 
   /**
    * The drawn transform's velocity (world units and log scale per second), lightly smoothed, so a
-   * glide can start at the speed NEX is already moving (e.g. carried by the scrolling page).
+   * glide can start at the speed NEX is already moving (e.g. carried by the scrolling page). Only
+   * continuous motion counts: a new viewport (rotation, resize) resets it, and a jump (a step faster
+   * than `JUMP_SPEED`) is left out, so a glide never inherits a layout change as a fling.
    */
-  private track(displayed: Placement, dt: number): void {
+  private track(displayed: Placement, dt: number, engine: Engine): void {
     const m = this.motion;
     const s = logScale(displayed.scale);
     if (this.gliding) {
       m.vx = this.springs.x.v;
       m.vy = this.springs.y.v;
       m.vs = this.springs.s.v;
+    } else if (engine.width !== m.width || engine.height !== m.height) {
+      m.vx = 0;
+      m.vy = 0;
+      m.vs = 0;
     } else if (m.valid && dt > 0) {
-      const k = 0.5;
-      m.vx += ((displayed.x - m.x) / dt - m.vx) * k;
-      m.vy += ((displayed.y - m.y) / dt - m.vy) * k;
-      m.vs += ((s - m.s) / dt - m.vs) * k;
+      const vx = (displayed.x - m.x) / dt;
+      const vy = (displayed.y - m.y) / dt;
+      const vs = (s - m.s) / dt;
+      if (Math.hypot(vx, vy) <= JUMP_SPEED && Math.abs(vs) <= JUMP_SCALE_SPEED) {
+        const k = 0.5;
+        m.vx += (vx - m.vx) * k;
+        m.vy += (vy - m.vy) * k;
+        m.vs += (vs - m.vs) * k;
+      }
     }
     m.x = displayed.x;
     m.y = displayed.y;
     m.s = s;
     m.valid = displayed.scale > 0;
+    m.width = engine.width;
+    m.height = engine.height;
   }
 
   /**

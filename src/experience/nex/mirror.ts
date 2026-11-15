@@ -29,6 +29,9 @@ export class CompanionMirror implements FrameLayer {
   private target: HTMLCanvasElement | null = null;
   private context: CanvasRenderingContext2D | null = null;
   private region = { x: 0, y: 0, width: 0, height: 0 };
+  /** The stage's drawing-buffer size the region was measured for. */
+  private sourceWidth = 0;
+  private sourceHeight = 0;
   private stale = true;
   private shown = false;
   private visible = false;
@@ -66,6 +69,9 @@ export class CompanionMirror implements FrameLayer {
     if (!target || !context) return;
     this.frames++;
     const source = engine.renderer.domElement;
+    // A new device-pixel ratio (adaptive quality, another display) resizes the drawing buffer
+    // without a window resize: the region, in device pixels, must be measured again.
+    if (source.width !== this.sourceWidth || source.height !== this.sourceHeight) this.stale = true;
     // Measured (and the copy's buffer allocated) ahead of time, not at the first handover.
     if (this.stale && !this.measure(target, source)) return;
 
@@ -105,6 +111,8 @@ export class CompanionMirror implements FrameLayer {
     const height = Math.max(1, Math.round(this.region.height));
     if (target.width !== width) target.width = width;
     if (target.height !== height) target.height = height;
+    this.sourceWidth = source.width;
+    this.sourceHeight = source.height;
     this.stale = false;
     return true;
   }

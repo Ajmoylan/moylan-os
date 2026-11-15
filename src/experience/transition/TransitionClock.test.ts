@@ -5,7 +5,12 @@ import { rgb } from "../ambient/config";
 import type * as Definitions from "../agents/definitions";
 import type { AgentRenderDefinition } from "../agents/types";
 import type { Engine } from "../engine/Engine";
-import { NEX_ANCHOR_EVENT, NEX_ATTENTION_EVENT, type NexAttention } from "~/lib/nex-events";
+import {
+  NEX_ANCHOR_EVENT,
+  NEX_ATTENTION_EVENT,
+  type NexAttention,
+  type NexHolder,
+} from "~/lib/nex-events";
 import { ATTENTION_HOLD } from "../nex/look";
 import { ARRIVAL_SECONDS, FADE_SECONDS, NEX_ANCHOR, NEX_PACE } from "../nex/NexAvatar";
 import { NEX_PARAMS } from "../nex/params";
@@ -464,8 +469,8 @@ describe("TransitionClock: NEX's anchors and attention (launch sprint)", () => {
     anchor.version++;
     window.dispatchEvent(new Event(NEX_ANCHOR_EVENT));
   };
-  const attention = (kind: NexAttention) =>
-    window.dispatchEvent(new CustomEvent(NEX_ATTENTION_EVENT, { detail: kind }));
+  const attention = (kind: NexAttention, source: NexHolder = "pointer") =>
+    window.dispatchEvent(new CustomEvent(NEX_ATTENTION_EVENT, { detail: { kind, source } }));
 
   it("glides from where NEX is drawn to a new anchor instead of jumping (Full Motion)", () => {
     const { e, clock, transition, run } = rig();
@@ -530,6 +535,36 @@ describe("TransitionClock: NEX's anchors and attention (launch sprint)", () => {
     expect(first.vy).toBeLessThan(1.4 * v.vy);
   });
 
+  it("a layout change (rotation) is not inherited as velocity by the next glide", () => {
+    const { e, clock, transition, run } = rig();
+    clock.setProps(props());
+    run(3);
+    // Rotation: a new viewport, and NEX's spot re-laid out far away in one frame.
+    (e as { width: number; height: number }).width = 800;
+    (e as { width: number; height: number }).height = 1200;
+    anchor.box = { ...anchor.box, left: 100, top: 900 };
+    anchor.version++;
+    run(0.016);
+    moveAnchor(500, 1000); // the dock takes NEX straight after
+    const first = step(run, transition);
+    // From rest: no fling at the glide's speed cap in the direction of the re-layout.
+    expect(Math.hypot(first.vx, first.vy)).toBeLessThan(2);
+  });
+
+  it("a jump of NEX's spot (no viewport change) is not inherited as velocity either", () => {
+    const { clock, transition, run } = rig();
+    clock.setProps(props());
+    run(3);
+    // A link to a section: the spot jumps 700 px up the screen in one frame.
+    anchor.box = { ...anchor.box, top: anchor.box.top - 700 };
+    anchor.version++;
+    run(0.016);
+    moveAnchor(900, 560); // the dock (below): the glide must not start flung upwards
+    const first = step(run, transition);
+    expect(first.vy).toBeLessThan(1);
+    expect(Math.hypot(first.vx, first.vy)).toBeLessThan(2);
+  });
+
   it("reversing mid-glide turns smoothly (no stop-and-restart) and lands exactly back", () => {
     const { e, clock, transition, run } = rig();
     clock.setProps(props());
@@ -586,6 +621,39 @@ describe("TransitionClock: NEX's anchors and attention (launch sprint)", () => {
     attention("release");
     run(6);
     expect(transition.visibility.attention).toBe(0);
+  });
+
+  it("attention holds are independent: one ending never cancels another", () => {
+    const { clock, transition, run } = rig();
+    clock.setProps(props());
+    run(1);
+    attention("hold", "transmission"); // the introduction is typing
+    attention("hold", "focus"); // and the visitor tabs to NEX's launcher
+    run(4);
+    attention("release", "transmission"); // typing finishes
+    run(4);
+    expect(transition.visibility.attention).toBeCloseTo(ATTENTION_HOLD, 2); // focus still holds
+    attention("hold", "pointer");
+    attention("release", "pointer"); // the pointer passing over doesn't end the focus hold
+    run(4);
+    expect(transition.visibility.attention).toBeCloseTo(ATTENTION_HOLD, 2);
+    attention("release", "focus");
+    run(6);
+    expect(transition.visibility.attention).toBe(0);
+  });
+
+  it("a launcher that moves away with NEX's anchor ends its pointer and focus holds only", () => {
+    const { clock, transition, run } = rig();
+    clock.setProps(props());
+    run(1);
+    attention("hold", "pointer"); // hovering the opening's launcher...
+    moveAnchor(900, 560); // ...which unmounts as NEX docks (no pointerleave)
+    run(6);
+    expect(transition.visibility.attention).toBe(0);
+    attention("hold", "transmission");
+    moveAnchor(100, 500);
+    run(6);
+    expect(transition.visibility.attention).toBeCloseTo(ATTENTION_HOLD, 2);
   });
 
   it("attention stays 0 without Full Motion", () => {

@@ -95,7 +95,7 @@ export function NexTransmission({
       index = message.length;
       render();
       figure.setAttribute("data-state", "done");
-      signalNex("release");
+      signalNex("release", "transmission");
       remove();
     };
     const step = () => {
@@ -121,7 +121,7 @@ export function NexTransmission({
     render();
     figure.setAttribute("data-state", "typing");
     events.forEach((type) => window.addEventListener(type, finish, { passive: true }));
-    signalNex("hold");
+    signalNex("hold", "transmission");
     timer = window.setTimeout(() => {
       start = performance.now();
       step();
@@ -130,7 +130,7 @@ export function NexTransmission({
       done = true;
       window.clearTimeout(timer);
       remove();
-      signalNex("release");
+      signalNex("release", "transmission");
     };
   }, [message]);
 

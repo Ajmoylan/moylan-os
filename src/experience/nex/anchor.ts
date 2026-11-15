@@ -22,6 +22,8 @@ export interface AnchorBox {
    * (`data-nex-contain="<media query>"`, evaluated when the box is measured).
    */
   contain: boolean;
+  /** The visible viewport's height (px) when measured (placement.ts `Rect.viewHeight`). */
+  viewHeight: number;
 }
 
 export class AnchorTracker {
@@ -32,6 +34,7 @@ export class AnchorTracker {
     height: 0,
     present: false,
     contain: false,
+    viewHeight: 0,
   };
   /** Incremented whenever `box` changes, so consumers recompute placement only then. */
   version = 0;
@@ -119,9 +122,12 @@ export class AnchorTracker {
     }
     const query = element.getAttribute("data-nex-contain");
     const contain = query !== null && (query === "" || this.win.matchMedia(query).matches);
+    // Mobile toolbars change it (a window resize, which marks the box dirty).
+    const viewHeight = this.win.innerHeight || 0;
     if (
       !box.present ||
       contain !== box.contain ||
+      viewHeight !== box.viewHeight ||
       rect.left !== box.left ||
       rect.top !== box.top ||
       rect.width !== box.width ||
@@ -133,6 +139,7 @@ export class AnchorTracker {
       box.height = rect.height;
       box.present = true;
       box.contain = contain;
+      box.viewHeight = viewHeight;
       this.version++;
     }
     return box;
