@@ -441,19 +441,24 @@
     display: none;
   }
   /*
-   * The mirror spans NEX's footprint but shows mainly his core and rings, at 60 %: enough to keep
-   * him recognisable over cards, while text passing beneath keeps nearly the contrast it has with
-   * NEX behind the page (measured on 320–412 px phones; launch-evidence/review-4).
+   * The mirror shows mainly NEX's core and rings, at 60 %: enough to keep him recognisable over
+   * cards, while text passing beneath keeps nearly the contrast it has with NEX behind the page
+   * (measured on 320–412 px phones; launch-evidence/review-4).
+   *
+   * Its box is just the mask's visible circle (116 % of the spot; opaque to 31 %, clear at 57 % of
+   * the spot's size, as before), so it never reaches past the screen's edge: WebKit draws a canvas
+   * that extends beyond the viewport stretched across its visible part, which put the mirror's
+   * rings beside NEX's own (doubled, blurry rings in Safari).
    */
   .nex-dock-mirror {
     position: absolute;
-    inset: -32%;
-    width: 164%;
-    height: 164%;
+    inset: -8%;
+    width: 116%;
+    height: 116%;
     pointer-events: none;
     opacity: 0;
     transition: opacity 450ms var(--ease-os);
-    mask-image: radial-gradient(circle closest-side, #000 38%, transparent 70%);
+    mask-image: radial-gradient(circle closest-side, #000 53.7%, transparent 99%);
   }
   /* Shown once NEX has arrived in the dock (CompanionMirror), fading in and out. */
   .nex-dock-mirror[data-visible] {
@@ -810,5 +815,243 @@
   .os-prose strong {
     color: var(--color-text);
     font-weight: 600;
+  }
+}
+
+/*
+ * Mobile Experience 2.0 (16 November 2026). Phones and tablets get their own composition rather than
+ * a compressed desktop: a clear name-first opening, a comfortable menu with the recruiter-facing
+ * pages first, a tighter section rhythm, readable cards with a quiet holographic edge, and touch
+ * feedback. Unlayered on purpose, so these refinements apply over the utility classes on small
+ * screens only; desktop is unchanged. No content changes; no JavaScript.
+ */
+
+/*
+ * Touch: no grey tap flash or double-tap delay; a brief, quiet pressed state on touch screens. Not on
+ * NEX's launchers: they are transparent (NEX himself responds), and a scroll often starts on them.
+ */
+a,
+button,
+summary {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+@media (hover: none) {
+  :where(a, button):not(.nex-launcher):active {
+    filter: brightness(1.18);
+  }
+  :where(a.rounded-full, button.rounded-full, a.rounded-md, button.rounded-md):not(
+      .nex-launcher
+    ):active {
+    transform: scale(0.97);
+  }
+}
+
+@media (max-width: 63.99rem) {
+  /* Opening: the name as the headline, the role as a quiet teal line beneath it. */
+  #hero-title {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.7rem;
+    font-family: var(--font-sans);
+    font-size: inherit;
+    letter-spacing: normal;
+    text-transform: none;
+  }
+  #hero-title > span:first-child {
+    font-size: clamp(2.1rem, 9.5vw, 3.25rem);
+    font-weight: 600;
+    line-height: 1.02;
+    letter-spacing: -0.025em;
+    color: var(--color-text);
+  }
+  #hero-title > span:nth-child(2) {
+    display: none;
+  }
+  #hero-title > span:nth-child(3) {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    line-height: 1.5;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--color-nex);
+  }
+  /* NEX takes a little more of the opening on phones (he docks as soon as the visitor scrolls). */
+  [data-nex-slot="hero"] {
+    width: min(76vw, 34svh, 26rem);
+  }
+}
+
+/* Short screens (small phones, landscape): the opening still fits, hint and scroll cue included. */
+@media (max-width: 63.99rem) and (max-height: 740px) {
+  #hero-title {
+    gap: 0.45rem;
+  }
+  #hero-title > span:first-child {
+    font-size: clamp(1.75rem, 7.5vw, 2.4rem);
+  }
+  [data-nex-slot="hero"] {
+    width: min(68vw, 27svh, 26rem);
+  }
+}
+
+/* Very short screens (320 × 568, phones in landscape): a compact opening that still fits whole. */
+@media (max-height: 600px) and (max-width: 63.99rem) {
+  [aria-labelledby="hero-title"] {
+    padding-block: 0.75rem;
+  }
+  #hero-title > span:first-child {
+    font-size: 1.75rem;
+  }
+  [data-nex-slot="hero"] {
+    width: min(60vw, 23svh);
+    margin-block: 0.5rem;
+  }
+  .nex-tx-body {
+    font-size: 0.9875rem;
+    line-height: 1.42;
+  }
+}
+@media (max-height: 460px) and (max-width: 63.99rem) {
+  #hero-title {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.9rem;
+  }
+  #hero-title > span:first-child {
+    font-size: 1.375rem;
+  }
+  [data-nex-slot="hero"] {
+    width: 22svh;
+    margin-block: 0.25rem;
+  }
+  .nex-tx-body {
+    margin-top: 0.25rem;
+  }
+}
+
+@media (max-width: 47.99rem) {
+  /* The transmission: slightly smaller type, so the opening breathes at 320–430 px. */
+  .nex-tx-body {
+    font-size: 1.0625rem;
+    line-height: 1.5;
+  }
+
+  /* Sections: one consistent rhythm, with a hairline that marks each section's start. */
+  .os-lane {
+    padding-block: 3.75rem;
+  }
+  .os-lane + .os-lane {
+    border-top: 1px solid rgb(30 43 53 / 0.55);
+  }
+  .os-lane h2 {
+    font-size: 1.875rem;
+    line-height: 1.15;
+  }
+  .os-lane .os-reveal > .mt-5 {
+    font-size: 1.0625rem;
+    line-height: 1.6;
+  }
+  .os-lane .os-reveal > .mt-10 {
+    margin-top: 2rem;
+  }
+
+  /* The introduction's actions: the main one full width, the others sharing the row beneath. */
+  #intro .mt-10 > .flex-wrap > * {
+    flex: 1 1 0;
+    justify-content: center;
+  }
+  #intro .mt-10 > .flex-wrap > :first-child {
+    flex-basis: 100%;
+    min-height: 3rem;
+  }
+
+  /* Dedicated pages: a tighter, stronger intro. */
+  .os-intro {
+    padding-top: 2.5rem;
+    padding-bottom: 2rem;
+  }
+  .os-intro h1 {
+    font-size: 2.375rem;
+    line-height: 1.08;
+  }
+  .os-intro h1 + div {
+    margin-top: 1rem;
+    font-size: 1.0625rem;
+    line-height: 1.6;
+  }
+
+  /* Cards: comfortable padding, readable text, and a quiet holographic top edge in the card's
+     agent colour. */
+  li.os-panel {
+    padding: 1.25rem;
+  }
+  li.os-panel :where(h2, h3) {
+    font-size: 1.1875rem;
+    line-height: 1.3;
+  }
+  li.os-panel > p.text-sm {
+    font-size: 0.9375rem;
+    line-height: 1.6;
+  }
+  li.os-panel[data-agent]::before {
+    content: "";
+    position: absolute;
+    inset: 0 1.25rem auto;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0.55;
+  }
+
+  /* Menu: the pages recruiters look for first, as large tiles; then the environments as rows. */
+  .os-mobile-menu:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+  }
+  .os-mobile-menu > :nth-child(3) {
+    order: 1;
+    margin-top: 0;
+  }
+  .os-mobile-menu > :nth-child(4) {
+    order: 2;
+    gap: 0.5rem;
+  }
+  .os-mobile-menu > :nth-child(1) {
+    order: 3;
+    margin-top: 1.5rem;
+  }
+  .os-mobile-menu > :nth-child(2) {
+    order: 4;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .os-mobile-menu > :nth-child(4) a {
+    min-height: 3.25rem;
+    padding-inline: 1rem;
+    border: 1px solid var(--color-steel);
+    border-radius: 12px;
+    background: rgb(18 28 36 / 0.6);
+    font-weight: 500;
+  }
+  .os-mobile-menu > :nth-child(4) a:not(.text-nex) {
+    color: var(--color-text);
+  }
+  .os-mobile-menu > :nth-child(4) a.text-nex {
+    border-color: rgb(63 224 208 / 0.45);
+  }
+  .os-mobile-menu > :nth-child(2) li + li {
+    border-top: 1px solid rgb(30 43 53 / 0.7);
+  }
+  .os-mobile-menu > :nth-child(2) a {
+    min-height: 3rem;
+    gap: 0.75rem;
+    padding-inline: 0.25rem;
+  }
+
+  /* NEX's dock: keyboard focus and in-page links never scroll content in under him. */
+  html {
+    scroll-padding-bottom: 6rem;
   }
 }

@@ -187,8 +187,9 @@ export class TransitionClock implements FrameLayer {
       };
       const onAttention = (event: Event) => {
         const { kind, source } = (event as CustomEvent<NexAttentionDetail>).detail ?? {};
-        if (kind === "pulse") this.attentionPulse = true;
-        else if (source && kind === "hold") this.attentionHolds.add(source);
+        if (kind === "pulse" || kind === "play") this.attentionPulse = true;
+        if (kind === "play") this.context.transition.visibility.plays++;
+        if (source && kind === "hold") this.attentionHolds.add(source);
         else if (source && kind === "release") this.attentionHolds.delete(source);
         engine.invalidate();
       };

@@ -34,6 +34,11 @@ export interface AgentVisibility {
    * focus is on NEX's launcher, a brief pulse on activation). Always 0 without Full Motion.
    */
   attention: number;
+  /**
+   * Personality 2.0/2.1: how many playful moments the visitor has given NEX (activating him,
+   * dismissing his panel). The agent reacts to each (an excited spin, Full Motion only); never reset.
+   */
+  plays: number;
 }
 
 /** Where the drawn agent is, plus the segment it is interpolating along (morphs only). */
@@ -137,7 +142,7 @@ export function createTransition(agent: StageAgent = "nex"): StageTransition {
     request: 0,
     issued: 0,
     palette,
-    visibility: { fade: 0, arrival: 0, formed: 0, time: 0, attention: 0 },
+    visibility: { fade: 0, arrival: 0, formed: 0, time: 0, attention: 0, plays: 0 },
     placement: {
       displayed: placement(),
       from: placement(),

@@ -30,6 +30,17 @@ import { Resources } from "../engine/resources";
 import { interactionUniforms, syncInteraction } from "../flow/interaction";
 import { drawCount } from "../performance/quality";
 import {
+  ARRIVAL_NOD,
+  CURIOSITY,
+  EXCITE,
+  approached,
+  calmExcitement,
+  createExcitement,
+  curiosityRoll,
+  damp,
+  excite,
+  exciteStep,
+  glanceAt,
   ATTENTION_GLOW,
   CORE_LEAN_UNITS,
   CORE_SPRING,
@@ -44,7 +55,7 @@ import {
   type Spring,
 } from "./look";
 import { NexMotion } from "./motion";
-import { NEX_PARAMS } from "./params";
+import { NEX_PARAMS, NEX_SHELL_RADIUS } from "./params";
 import { CAMERA_DISTANCE } from "./placement";
 import {
   nexAtmosphereFragment,
@@ -190,7 +201,24 @@ export class NexAvatar implements AgentView {
     pitch: { x: 0, v: 0 } as Spring,
     leanX: { x: 0, v: 0 } as Spring,
     leanY: { x: 0, v: 0 } as Spring,
+    roll: { x: 0, v: 0 } as Spring,
   };
+  /**
+   * Personality 2.0 (Full Motion only, NEX's own role): the curious tilt (sprung, like the turn),
+   * the pointer's last position and how long it has rested (0 … 1), and the glide state seen last
+   * frame (an arrival nod when a glide ends). Personality 2.1: his excitement (a sprung spin and
+   * hop), the approach detector, the last approach that excited him and the clock they run on
+   * (seconds of his own updates). All exactly zero at rest.
+   */
+  private roll = 0;
+  private readonly lastCursor = { x: 0, y: 0, valid: false };
+  private dwell = 0;
+  private plays = 0;
+  private wasGliding = false;
+  private readonly excitement = createExcitement();
+  private readonly approach = { armed: true };
+  private lastApproach = -Infinity;
+  private clock = 0;
   /** The energy pulse: wavefront radius and strength (uPulse), and the glow's swell. */
   private readonly pulse = { radius: 0, strength: 0, swell: 0 };
   private readonly pulseUniform: IUniform<Vector2> = { value: new Vector2() };
@@ -477,15 +505,21 @@ export class NexAvatar implements AgentView {
 
     // Place, scale and turn NEX so its three-quarter view faces the camera from its anchor.
     root.position.set(x, y, 0);
-    root.scale.setScalar(scale);
+    // Personality 2.1: NEX lifts a little as he hops with excitement (0 without Full Motion);
+    // exactly his placement's scale at rest.
+    const hop = this.personal ? this.excitement.hop.x : 0;
+    root.scale.setScalar(hop === 0 ? scale : scale * (1 + EXCITE.lift * hop));
     this.dir.copy(camera.position).sub(root.position).normalize();
     this.facing.setFromUnitVectors(UNIT_Z, this.dir);
     // Launch sprint (personality): the rings turn towards the cursor, in the camera-facing frame,
     // and the core leans towards it (Full Motion with pointer effects only; NEX's own role only).
     // At rest both are exactly zero and skipped, so NEX's approved idle transform is unchanged.
-    if (this.personal) this.followCursor(engine, x, y, delta);
-    if (this.look.yaw !== 0 || this.look.pitch !== 0) {
-      this.lookEuler.set(this.look.pitch, this.look.yaw, 0);
+    if (this.personal) this.followCursor(engine, x, y, scale, delta);
+    // The excitement spins the rings about the view axis, tilted towards the visitor by the hop.
+    const roll = this.roll + this.excitement.spin.x;
+    const pitch = this.look.pitch + EXCITE.tilt * this.excitement.hop.x;
+    if (this.look.yaw !== 0 || pitch !== 0 || roll !== 0) {
+      this.lookEuler.set(pitch, this.look.yaw, roll);
       this.facing.multiply(this.lookTurn.setFromEuler(this.lookEuler));
     }
     root.quaternion.copy(this.facing.multiply(this.view));
@@ -543,12 +577,23 @@ export class NexAvatar implements AgentView {
 
   /**
    * Advances the damped ring turn and core lean towards the cursor (or back to rest) by `delta`
-   * seconds.
+   * seconds, and NEX's personality: the curious tilt when a mouse rests near him, an idle glance
+   * when there is no pointer, his excitement (a spin and hop) when a mouse or pen approaches, when
+   * he is activated and when his panel closes, and a nod when a glide arrives. All of them need Full
+   * Motion, NEX's own role and a formed NEX; the glide itself is never embellished (glances,
+   * curiosity and approaches wait until he has arrived). Otherwise they ease, or are put, to rest.
    */
-  private followCursor(engine: Engine, x: number, y: number, delta: number): void {
-    const { interaction } = this.context;
+  private followCursor(engine: Engine, x: number, y: number, scale: number, delta: number): void {
+    const { interaction, visibility, placement } = this.context;
     const aim = this.lookAim;
     const lean = this.leanAim;
+    const dt = Math.min(Math.max(delta, 0), 0.1);
+    this.clock += dt;
+    const lively = this.role === "none" && this.props?.motion === "full" && visibility.formed >= 1;
+    const calm = lively && !placement.gliding;
+    const cursor = this.lastCursor;
+    const excitement = this.excitement;
+    let rollAim = 0;
     if (this.role === "none" && interaction.mode !== "none" && interaction.cursorActive) {
       // NEX's centre in NDC: world (x, y) on the z = 0 plane, CAMERA_DISTANCE from the camera.
       const aspect = engine.width / Math.max(1, engine.height);
@@ -558,16 +603,56 @@ export class NexAvatar implements AgentView {
       const { x: cx, y: cy } = interaction.cursor;
       lookTarget(cx, cy, nx, ny, aspect, aim);
       leanTarget(cx, cy, nx, ny, aspect, lean);
+      // Personality reacts to a mouse or pen only: a finger starting a scroll is not the visitor
+      // approaching NEX (phones keep their idle glances instead).
+      const fine = interaction.cursorFine;
+      // Curiosity: a resting pointer earns a quizzical tilt towards its side.
+      const speed =
+        cursor.valid && dt > 0 ? Math.hypot(cx - cursor.x, cy - cursor.y) / dt : Infinity;
+      const still = fine && speed < CURIOSITY.still;
+      this.dwell = damp(this.dwell, still ? 1 : 0, dt, CURIOSITY.settle);
+      if (calm) rollAim = curiosityRoll((cx - nx) * aspect, this.dwell);
+      // Excitement: the pointer comes close (in ring radii), once per approach, with a cooldown.
+      const radius = (NEX_SHELL_RADIUS * scale) / halfHeight;
+      const distance = fine
+        ? Math.hypot((cx - nx) * aspect, cy - ny) / Math.max(radius, 1e-6)
+        : Infinity;
+      if (
+        approached(this.approach, distance) &&
+        calm &&
+        this.clock - this.lastApproach >= EXCITE.cooldown &&
+        excite(excitement, this.clock)
+      ) {
+        this.lastApproach = this.clock;
+      }
+      cursor.x = cx;
+      cursor.y = cy;
+      cursor.valid = true;
     } else {
-      aim.yaw = aim.pitch = 0;
       lean.x = lean.y = 0;
+      this.dwell = 0;
+      cursor.valid = false;
+      approached(this.approach, Infinity);
+      // Idle presence: with no pointer (phones, or the pointer elsewhere), an occasional glance.
+      if (calm) glanceAt(visibility.time, aim);
+      else aim.yaw = aim.pitch = 0;
     }
-    const dt = Math.min(Math.max(delta, 0), 0.1);
     const s = this.springs;
+    // Arrival: a small nod as a glide into his spot ends (the glide itself is untouched).
+    if (this.wasGliding && !placement.gliding && lively) s.pitch.v -= ARRIVAL_NOD;
+    this.wasGliding = placement.gliding;
     this.look.yaw = spring(s.yaw, aim.yaw, dt, LOOK_SPRING);
     this.look.pitch = spring(s.pitch, aim.pitch, dt, LOOK_SPRING);
+    this.roll = spring(s.roll, rollAim, dt, LOOK_SPRING);
     this.lean.x = spring(s.leanX, lean.x, dt, CORE_SPRING);
     this.lean.y = spring(s.leanY, lean.y, dt, CORE_SPRING);
+    // Excitement on activation and when his panel closes (each a "play"), right away.
+    if (visibility.plays !== this.plays) {
+      this.plays = visibility.plays;
+      if (lively) excite(excitement, this.clock);
+    }
+    if (lively) exciteStep(excitement, this.clock, dt);
+    else calmExcitement(excitement);
   }
 
   /**

@@ -21,7 +21,7 @@ export function PageIntro({ agentId = "nex", label, title, nex = true, children 
   return (
     <header
       data-agent={agentId}
-      className="pt-16 pb-10 sm:pt-24 lg:grid lg:grid-cols-[1fr_12rem] lg:items-center lg:gap-10"
+      className="os-intro pt-16 pb-10 sm:pt-24 lg:grid lg:grid-cols-[1fr_12rem] lg:items-center lg:gap-10"
     >
       <div>
         <p className="os-label">

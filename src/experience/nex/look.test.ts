@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  CURIOSITY,
+  GLANCE,
+  EXCITE,
+  approached,
+  calmExcitement,
+  createExcitement,
+  curiosityRoll,
+  excite,
+  exciteStep,
+  glanceAt,
   CORE_LEAN_UNITS,
   LOOK_SPRING,
   PULSE,
@@ -117,5 +127,92 @@ describe("organic motion and the energy pulse", () => {
     pulseAt(PULSE.period + 0.4, out);
     expect(out.strength).toBeCloseTo(early); // it repeats
     expect(PULSE.period * 2).toBeCloseTo(NEX_PARAMS.breath.period); // in step with the breathing
+  });
+});
+
+describe("Personality 2.0 and 2.1 helpers", () => {
+  it("curiosity tilts towards the pointer's side, bounded, and not at all without dwelling", () => {
+    expect(curiosityRoll(0.5, 1)).toBeLessThan(0); // pointer on the right: clockwise
+    expect(curiosityRoll(-0.5, 1)).toBeGreaterThan(0);
+    expect(Math.abs(curiosityRoll(5, 1))).toBeCloseTo(CURIOSITY.roll, 10);
+    expect(curiosityRoll(0.5, 0)).toBe(-0); // a moving pointer: no tilt
+  });
+
+  /** Runs an excitement at 60 fps from `clock` for `seconds`; returns what was seen. */
+  const run = (e = createExcitement(), seconds = 4, clock = 0) => {
+    let peakSpeed = 0;
+    let furthest = 0;
+    let highest = 0;
+    let lowest = 0;
+    let firstFrame = 0;
+    for (let i = 1; i <= seconds * 60; i++) {
+      exciteStep(e, clock + i / 60, 1 / 60);
+      if (i === 1) firstFrame = e.spin.x;
+      peakSpeed = Math.max(peakSpeed, Math.abs(e.spin.v));
+      furthest = Math.max(furthest, e.spin.x);
+      highest = Math.max(highest, e.hop.x);
+      lowest = Math.min(lowest, e.hop.x);
+    }
+    return { e, peakSpeed, furthest, highest, lowest, firstFrame };
+  };
+
+  it("excitement: one clearly visible spin that eases in, settles naturally and ends at rest", () => {
+    const e = createExcitement();
+    expect(excite(e, 0)).toBe(true);
+    const seen = run(e, 6);
+    expect(seen.firstFrame).toBeLessThan(0.001); // eases in: no jolt
+    expect(seen.peakSpeed).toBeGreaterThan(6); // lively, clearly visible
+    expect(seen.peakSpeed).toBeLessThan(11); // never a frantic whirl (≤ 1.75 turns a second)
+    const overshoot = seen.furthest - 2 * Math.PI;
+    expect(overshoot).toBeGreaterThan(0.05); // a natural settle…
+    expect(overshoot).toBeLessThan(0.3); // …not a wobble
+    // A hop: up (a lift of ≈ 8 %), a small dip, then back.
+    expect(seen.highest * EXCITE.lift).toBeGreaterThan(0.06);
+    expect(seen.highest * EXCITE.lift).toBeLessThan(0.1);
+    expect(seen.lowest).toBeGreaterThan(-0.06);
+    // Exactly at rest afterwards: whole turns dropped, the same pose as before.
+    expect(e).toEqual(Object.assign(createExcitement(), { start: 0 }));
+  });
+
+  it("excitement never stacks: a new spin waits until the current one has nearly settled", () => {
+    const e = createExcitement();
+    excite(e, 0);
+    exciteStep(e, 0.5, 0.5);
+    expect(excite(e, 0.5)).toBe(false); // mid-turn
+    expect(e.to).toBeCloseTo(2 * Math.PI, 10);
+    run(e, 3, 0.5);
+    expect(excite(e, 3.6)).toBe(true); // settled: ready again
+    calmExcitement(e);
+    expect(e).toEqual(createExcitement()); // Reduced Motion, a morph: at rest at once
+  });
+
+  it("an approach counts once, and again only after the pointer has really left", () => {
+    const state = { armed: true };
+    expect(approached(state, 5)).toBe(false);
+    expect(approached(state, EXCITE.near - 0.1)).toBe(true);
+    for (const d of [0.2, 1, EXCITE.near + 0.1, EXCITE.far - 0.1, 0.5]) {
+      expect(approached(state, d)).toBe(false); // resting or hovering nearby: no repeat
+    }
+    approached(state, EXCITE.far + 0.1); // left
+    expect(approached(state, 1)).toBe(true);
+    expect(approached({ armed: true }, Infinity)).toBe(false); // no (or a touch) pointer
+  });
+
+  it("idle glances are occasional, bounded and deterministic", () => {
+    const out = { yaw: 0, pitch: 0 };
+    let glancing = 0;
+    let samples = 0;
+    for (let t = 0; t < 10 * GLANCE.every; t += 0.05, samples++) {
+      glanceAt(t, out);
+      if (t < GLANCE.every) expect(out).toEqual({ yaw: 0, pitch: 0 }); // never straight away
+      if (out.yaw !== 0) glancing++;
+      expect(Math.abs(out.yaw)).toBeLessThanOrEqual(GLANCE.yaw);
+      expect(Math.abs(out.pitch)).toBeLessThanOrEqual(GLANCE.pitch);
+    }
+    // About one glance of GLANCE.hold seconds per cycle after the first: occasional, not constant.
+    expect(glancing / samples).toBeGreaterThan(0.1);
+    expect(glancing / samples).toBeLessThan(0.2);
+    const a = glanceAt(30.3, { yaw: 0, pitch: 0 });
+    expect(glanceAt(30.3, { yaw: 0, pitch: 0 })).toEqual(a);
   });
 });

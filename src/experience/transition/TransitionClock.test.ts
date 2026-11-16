@@ -147,6 +147,7 @@ describe("StageTransition", () => {
       formed: 0,
       time: 0,
       attention: 0,
+      plays: 0,
     });
   });
 
@@ -246,6 +247,7 @@ describe("TransitionClock", () => {
       formed: 1,
       time: 0,
       attention: 0,
+      plays: 0,
     });
     expect(transition.state).toBe("idle");
   });
@@ -274,6 +276,7 @@ describe("TransitionClock", () => {
       formed: 0,
       time: 0,
       attention: 0,
+      plays: 0,
     });
     rebuilt.setProps(props());
     rebuilt.update(e, 0.016);
@@ -425,6 +428,7 @@ describe("TransitionClock", () => {
         formed: 1,
         time: 0,
         attention: 0,
+        plays: 0,
       });
     });
 
@@ -654,6 +658,19 @@ describe("TransitionClock: NEX's anchors and attention (launch sprint)", () => {
     moveAnchor(100, 500);
     run(6);
     expect(transition.visibility.attention).toBeCloseTo(ATTENTION_HOLD, 2);
+  });
+
+  it("activating NEX (play) counts a play and acknowledges it like a pulse", () => {
+    const { clock, transition, run } = rig();
+    clock.setProps(props());
+    run(1);
+    attention("play");
+    run(0.016);
+    expect(transition.visibility.plays).toBe(1);
+    expect(transition.visibility.attention).toBeGreaterThan(0.95);
+    attention("pulse"); // a navigation choice or a sentence: no play
+    run(0.016);
+    expect(transition.visibility.plays).toBe(1);
   });
 
   it("attention stays 0 without Full Motion", () => {

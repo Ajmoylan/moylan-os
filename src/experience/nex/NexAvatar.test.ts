@@ -12,8 +12,9 @@ import { nexPalette, rgb } from "../ambient/config";
 import type { Engine } from "../engine/Engine";
 import { createInteraction } from "../flow/interaction";
 import { createTransition } from "../transition/StageTransition";
-import { CORE_LEAN_UNITS } from "./look";
+import { CORE_LEAN_UNITS, GLANCE, glanceAt } from "./look";
 import { NexAvatar, type NexAvatarProps } from "./NexAvatar";
+import { CAMERA_DISTANCE } from "./placement";
 import { generateNexShape } from "./shape";
 
 /**
@@ -319,5 +320,223 @@ describe("NexAvatar personality (launch sprint)", () => {
     expect(peakV.glow).toBeCloseTo(peakA.glow + 0.22, 6);
     expect(peakV.atmosphere).toBeCloseTo(peakA.atmosphere + 0.5, 6);
     expect(peakV.shell).toBeGreaterThan(peakA.shell);
+  });
+});
+
+describe("NexAvatar Personality 2.0 and 2.1", () => {
+  /** A sized engine with its camera where the stage puts it (looking at NEX from his distance). */
+  const sized = () => {
+    Object.assign(engine, { width: 1200, height: 800, dpr: 1 });
+    engine.camera.position.set(0, 0, CAMERA_DISTANCE);
+  };
+  const formedFrame = (time = 0) => {
+    Object.assign(transition.visibility, { fade: 1, arrival: 2.4, formed: 1, time });
+    Object.assign(transition.placement.displayed, { x: 0, y: 0, scale: 0.8, onScreen: true });
+  };
+  /**
+   * One NEX with personality. `away()` is how far his rings are turned from his approved pose,
+   * captured after warm-up frames (two avatars can't be compared side by side: they share
+   * Three.js state), at the same idle time.
+   */
+  const pair = (motion: "full" | "reduced" = "full") => {
+    const n = nex(true);
+    n.setProps(props({ motion }));
+    const mine = scene.children[0]!;
+    const frames = (count: number, advance = true) => {
+      for (let i = 0; i < count; i++) {
+        if (advance) transition.visibility.time += 1 / 60;
+        n.update(engine, 1 / 60);
+      }
+    };
+    let rest = mine.quaternion.clone();
+    const settle = () => {
+      frames(3, false);
+      rest = mine.quaternion.clone();
+    };
+    // Normalised: NEX's approved view quaternion is stored to 4 decimals (not exactly unit length),
+    // and angleTo reports ~0.015 rad between two copies of an unnormalised quaternion.
+    const away = () => mine.quaternion.clone().normalize().angleTo(rest.clone().normalize());
+    return { n, mine, frames, away, settle };
+  };
+  const tilt = (n: NexAvatar) => (n as unknown as { roll: number }).roll;
+
+  it("curiosity: a resting pointer earns a tilt towards its side; moving it straightens NEX", () => {
+    sized();
+    const { n, frames } = pair();
+    formedFrame();
+    interaction.mode = "analytic";
+    interaction.cursorActive = true;
+    interaction.cursorFine = true;
+    interaction.cursor.set(0.6, 0); // to NEX's right, resting
+    frames(120);
+    expect(tilt(n)).toBeLessThan(-0.1); // clockwise, towards the pointer
+    for (let i = 0; i < 120; i++) {
+      interaction.cursor.set(0.6 * Math.cos(i / 4), 0.4 * Math.sin(i / 4)); // moving on
+      frames(1);
+    }
+    expect(Math.abs(tilt(n))).toBeLessThan(0.03);
+  });
+
+  const spinning = (n: NexAvatar) =>
+    (n as unknown as { excitement: { to: number; spin: { x: number } } }).excitement;
+
+  it("excitement: activating NEX spins him once, with a hop, and lands him in the approved pose", () => {
+    sized();
+    const { n, mine, frames, away, settle } = pair();
+    formedFrame(1);
+    settle();
+    transition.visibility.plays++;
+    frames(1);
+    expect(spinning(n).to).toBeCloseTo(2 * Math.PI, 10); // at once
+    frames(20);
+    expect(mine.scale.x).toBeGreaterThan(0.8 * 1.05); // the hop's lift
+    expect(mine.position.toArray()).toEqual([0, 0, 0]); // never moves
+    frames(25);
+    expect(away()).toBeGreaterThan(1.5); // well into the turn
+    transition.visibility.plays++; // closing his panel mid-turn: no second, stacked spin
+    frames(240);
+    expect(away()).toBeLessThan(1e-6);
+    expect(mine.scale.x).toBe(0.8);
+    expect(spinning(n).to).toBe(0);
+  });
+
+  it("excitement: a mouse approaching NEX excites him once; resting nearby never repeats it", () => {
+    sized();
+    const { n, frames } = pair();
+    formedFrame(1);
+    interaction.mode = "analytic";
+    interaction.cursorActive = true;
+    interaction.cursorFine = true;
+    const turns = () => spinning(n).to / (2 * Math.PI);
+    let started = 0;
+    const watch = (count: number) => {
+      for (let i = 0; i < count; i++) {
+        const before = turns();
+        frames(1);
+        if (turns() > before) started++;
+      }
+    };
+    interaction.cursor.set(0.9, 0.9); // far away
+    watch(30);
+    expect(started).toBe(0);
+    interaction.cursor.set(0.05, 0.02); // on NEX
+    watch(1);
+    expect(started).toBe(1);
+    watch(60);
+    interaction.cursor.set(0.9, 0.9); // leaves, and comes straight back (inside the cooldown)
+    watch(5);
+    interaction.cursor.set(0.05, 0.02);
+    watch(360); // and rests on him for 6 s
+    expect(started).toBe(1);
+    interaction.cursor.set(0.9, 0.9); // leaves; comes back after the cooldown
+    watch(5);
+    interaction.cursor.set(0.05, 0.02);
+    watch(1);
+    expect(started).toBe(2);
+  });
+
+  it("a finger is not an approach: a touch starting a scroll on NEX never excites him", () => {
+    sized();
+    const { n, frames } = pair();
+    formedFrame(1);
+    interaction.mode = "analytic";
+    interaction.cursorActive = true;
+    interaction.cursorFine = false; // touch
+    interaction.cursor.set(0.9, 0.9);
+    frames(10);
+    interaction.cursor.set(0, 0);
+    frames(60);
+    expect(spinning(n).to).toBe(0);
+    expect(Math.abs(tilt(n))).toBe(0); // and no curious tilt either
+  });
+
+  it("the glide is never embellished: no glance or approach while NEX glides", () => {
+    sized();
+    const { n, frames, away, settle } = pair();
+    let start = GLANCE.every;
+    const look = { yaw: 0, pitch: 0 };
+    while (glanceAt(start, look).yaw === 0) start += 0.05;
+    formedFrame(start);
+    transition.placement.gliding = true; // gliding through a glance window
+    settle();
+    interaction.mode = "analytic";
+    interaction.cursorActive = true;
+    interaction.cursorFine = true;
+    interaction.cursor.set(0.9, 0.9);
+    frames(5, false);
+    interaction.cursor.set(0, 0); // a mouse over him mid-glide
+    frames(30, false);
+    expect(spinning(n).to).toBe(0);
+    interaction.cursorActive = false; // no pointer, in a glance window
+    frames(600, false);
+    expect(away()).toBeLessThan(1e-6);
+  });
+
+  it("idle presence: with no pointer NEX glances now and then, then looks ahead again", () => {
+    sized();
+    const { frames, away, settle } = pair();
+    let start = GLANCE.every;
+    const look = { yaw: 0, pitch: 0 };
+    while (glanceAt(start, look).yaw === 0) start += 0.05;
+    formedFrame(start - 0.2); // just before the glance: straight ahead
+    settle();
+    transition.visibility.time = start;
+    frames(60, false);
+    expect(away()).toBeGreaterThan(0.1);
+    transition.visibility.time = start + GLANCE.hold + 0.5; // after the glance
+    frames(600, false);
+    expect(away()).toBeLessThan(1e-6);
+  });
+
+  it("arrival: a small nod when a glide ends, then exactly the approved pose", () => {
+    sized();
+    const { frames, away, settle } = pair();
+    formedFrame(1);
+    settle();
+    transition.placement.gliding = true;
+    frames(2, false);
+    transition.placement.gliding = false;
+    let deepest = 0;
+    for (let i = 0; i < 40; i++) {
+      frames(1, false);
+      deepest = Math.max(deepest, away());
+    }
+    expect(deepest).toBeGreaterThan(0.05); // visible
+    expect(deepest).toBeLessThan(0.3); // restrained
+    frames(600, false);
+    expect(away()).toBeLessThan(1e-6);
+  });
+
+  it("attention alone (a hold or a touch on NEX) never changes his size", () => {
+    sized();
+    const { mine, frames } = pair();
+    formedFrame(1);
+    transition.visibility.attention = 1;
+    frames(10, false);
+    expect(mine.scale.x).toBe(0.8);
+  });
+
+  it("none of it without Full Motion or while NEX is still forming", () => {
+    sized();
+    for (const [motion, formed] of [
+      ["reduced", 1],
+      ["full", 0.5],
+    ] as const) {
+      scene.clear();
+      transition = createTransition("nex");
+      interaction = createInteraction(0.1);
+      const { mine, frames, away, settle } = pair(motion);
+      formedFrame(1);
+      transition.visibility.formed = formed;
+      settle();
+      transition.visibility.plays++;
+      transition.placement.gliding = true;
+      frames(2);
+      transition.placement.gliding = false;
+      transition.visibility.time = 30;
+      frames(120);
+      expect(away(), `${motion} ${formed}`).toBeLessThan(1e-6);
+      expect(mine.scale.x).toBe(0.8);
+    }
   });
 });

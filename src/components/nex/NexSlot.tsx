@@ -19,6 +19,12 @@ interface NexSlotProps {
    * matches (homepage sections on wide screens: NEX stays in view until the next section takes it).
    */
   contain?: string;
+  /**
+   * While this media query matches, NEX leaves this slot for the dock as soon as the visitor starts
+   * scrolling, and comes back at the top (the homepage opening on phones and tablets, where the
+   * opening fills the screen). Otherwise he leaves once most of the slot has scrolled out of view.
+   */
+  dockOnScroll?: string;
   /** Id of visible text describing what activating NEX does (the hero's hint). */
   describedBy?: string;
   className?: string;
@@ -35,6 +41,7 @@ export function NexSlot({
   id,
   poster = false,
   contain,
+  dockOnScroll,
   describedBy,
   className = "",
 }: NexSlotProps) {
@@ -47,6 +54,7 @@ export function NexSlot({
       data-nex-slot-kind={poster ? "poster" : "roaming"}
       data-stage-anchor={active ? "nex" : undefined}
       data-nex-contain={contain}
+      data-nex-dock-on-scroll={dockOnScroll}
       className={`relative ${className}`}
     >
       {poster && (
@@ -65,7 +73,7 @@ export function NexSlot({
           onPointerLeave={() => signalNex("release", "pointer")}
           onFocus={() => signalNex("hold", "focus")}
           onBlur={() => signalNex("release", "focus")}
-          onClick={() => signalNex("pulse")}
+          onClick={() => signalNex("play")}
         />
       )}
     </div>

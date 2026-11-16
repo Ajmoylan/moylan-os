@@ -12,6 +12,12 @@ const ACTIVE_LAUNCHER = '[data-stage-anchor="nex"] .nex-launcher';
 /** Share of the page's own NEX spot that must be in view for NEX to stay there (hysteresis). */
 const STAY = 0.35;
 const RETURN = 0.6;
+/**
+ * A spot that docks on scroll (`data-nex-dock-on-scroll`): NEX leaves once the page has scrolled
+ * this far, and returns near the top (hysteresis; iOS's bounce at the top scrolls below 0).
+ */
+export const SCROLL_LEAVE_PX = 24;
+export const SCROLL_RETURN_PX = 8;
 
 /**
  * NEX's companion mode (launch sprint): NEX accompanies the visitor on every route and device.
@@ -19,8 +25,9 @@ const RETURN = 0.6;
  * - **Director:** one IntersectionObserver watches the route's primary NEX spot
  *   (`[data-nex-primary]`): while enough of it is in view NEX is drawn there (full size on the
  *   homepage opening), otherwise he glides, shrinking, into the **dock**: a small fixed spot in the
- *   viewport's corner. Routes without a spot, or where it isn't laid out (narrow screens), use the
- *   dock. The stage follows whichever element carries `data-stage-anchor="nex"`, so this is pure DOM:
+ *   viewport's corner. A spot that docks on scroll (the opening on phones and tablets) hands him to
+ *   the dock as soon as the page scrolls instead, so he never rides the scrolling page. Routes
+ *   without a spot, or where it isn't laid out (narrow screens), use the dock. The stage follows whichever element carries `data-stage-anchor="nex"`, so this is pure DOM:
  *   one NEX, one renderer, the same glide as everywhere else.
  * - **Dock:** NEX is drawn in the persistent stage behind the page (he never covers content); the
  *   dock adds a real button over him (opens his navigation panel) and a small "minimise" button.
@@ -59,15 +66,33 @@ export function NexCompanion() {
     const spot = document.querySelector<HTMLElement>("[data-nex-primary]");
     const observable = typeof IntersectionObserver === "function";
     let observer: IntersectionObserver | null = null;
-    let laidOut: boolean | null = null;
+    let mode: "none" | "observe" | "scroll" | null = null;
+    const byScroll = () => {
+      const y = window.scrollY;
+      if (y > SCROLL_LEAVE_PX) setNexPlacement("dock");
+      else if (y < SCROLL_RETURN_PX) setNexPlacement("page");
+    };
     const decide = (initial: boolean) => {
-      const now = spot !== null && spot.offsetWidth > 0 && spot.offsetHeight > 0;
-      if (now === laidOut) return;
-      laidOut = now;
+      const laidOut = spot !== null && spot.offsetWidth > 0 && spot.offsetHeight > 0;
+      const query = spot?.dataset.nexDockOnScroll;
+      const next = !laidOut
+        ? "none"
+        : query && window.matchMedia(query).matches
+          ? "scroll"
+          : "observe";
+      if (next === mode) return;
+      mode = next;
       observer?.disconnect();
       observer = null;
-      if (!now || !observable) {
-        setNexPlacement(now ? "page" : "dock");
+      window.removeEventListener("scroll", byScroll);
+      if (next === "scroll") {
+        if (initial) setNexPlacement("page");
+        window.addEventListener("scroll", byScroll, { passive: true });
+        byScroll();
+        return;
+      }
+      if (next === "none" || !observable) {
+        setNexPlacement(next === "none" ? "dock" : "page");
         return;
       }
       // A route's own spot starts with NEX in it; after a layout change the observer's first report
@@ -89,6 +114,7 @@ export function NexCompanion() {
     window.addEventListener("resize", onResize);
     return () => {
       window.removeEventListener("resize", onResize);
+      window.removeEventListener("scroll", byScroll);
       observer?.disconnect();
     };
   }, [pathname]);
@@ -151,7 +177,7 @@ export function NexCompanion() {
             onPointerLeave={() => signalNex("release", "pointer")}
             onFocus={() => signalNex("hold", "focus")}
             onBlur={() => signalNex("release", "focus")}
-            onClick={() => signalNex("pulse")}
+            onClick={() => signalNex("play")}
           />
         )}
       </div>

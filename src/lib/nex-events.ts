@@ -12,9 +12,11 @@ export const NEX_ATTENTION_EVENT = "moylan:nex-attention";
 /**
  * - `hold`: pointer over / focus on NEX's launcher (a soft, sustained acknowledgement);
  * - `release`: the hold ended;
- * - `pulse`: a single brief acknowledgement (activation, a navigation choice).
+ * - `pulse`: a single brief acknowledgement (a navigation choice, a sentence spoken);
+ * - `play`: the visitor activated NEX or came back to him (dismissed his panel): a pulse, plus his
+ *   excited spin (Full Motion only).
  */
-export type NexAttention = "hold" | "release" | "pulse";
+export type NexAttention = "hold" | "release" | "pulse" | "play";
 
 /**
  * Who holds NEX's attention. Each holds and releases independently, so one ending (the
@@ -34,7 +36,7 @@ export function announceNexAnchor(): void {
   window.dispatchEvent(new Event(NEX_ANCHOR_EVENT));
 }
 
-export function signalNex(kind: "pulse"): void;
+export function signalNex(kind: "pulse" | "play"): void;
 export function signalNex(kind: "hold" | "release", source: NexHolder): void;
 export function signalNex(kind: NexAttention, source?: NexHolder): void {
   if (typeof window === "undefined") return;
