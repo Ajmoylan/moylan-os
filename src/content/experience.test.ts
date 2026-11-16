@@ -49,7 +49,7 @@ describe("experience content (CV, 16 November 2026)", () => {
     const dir = __dirname;
     for (const file of readdirSync(dir).filter((f) => f.endsWith(".ts") && !f.includes(".test."))) {
       const text = readFileSync(join(dir, file), "utf8");
-      expect(text, file).not.toMatch(/gmail\.com/i);
+      expect(text.toLowerCase(), file).not.toContain("gmail.com");
       expect(text, file).not.toMatch(/\+\d{2}[\s\d]{7,}|\b\d{3}\s?\d{2}\s?\d{3}\b/);
     }
   });

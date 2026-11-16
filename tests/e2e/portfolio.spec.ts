@@ -92,9 +92,15 @@ test("Contact publishes the public address and profiles only", async ({ page }) 
     "href",
     "mailto:alex@moylanos.dev",
   );
-  await expect(page.getByRole("link", { name: /linkedin\.com\/in\/alex-moylan/ })).toBeVisible();
-  await expect(page.getByRole("link", { name: /github\.com\/Ajmoylan/ })).toBeVisible();
+  // Exact addresses (anchored names, exact hrefs).
+  await expect(
+    page.getByRole("link", { name: /^www\.linkedin\.com\/in\/alex-moylan\b/ }),
+  ).toHaveAttribute("href", "https://www.linkedin.com/in/alex-moylan");
+  await expect(page.getByRole("link", { name: /^github\.com\/Ajmoylan\b/ })).toHaveAttribute(
+    "href",
+    "https://github.com/Ajmoylan",
+  );
   const text = await page.locator("body").innerText();
-  expect(text).not.toMatch(/gmail/i);
+  expect(text.toLowerCase()).not.toContain("gmail");
   expect(text).not.toMatch(/\+\d{2}[\s\d]{7,}|\b\d{3}\s?\d{2}\s?\d{3}\b/);
 });
