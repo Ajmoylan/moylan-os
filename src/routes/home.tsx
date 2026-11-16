@@ -51,7 +51,11 @@ function Lane({
   children: ReactNode;
 }) {
   return (
-    <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-20 py-20 sm:py-28">
+    <section
+      id={id}
+      aria-labelledby={`${id}-title`}
+      className="os-lane scroll-mt-20 py-20 sm:py-28"
+    >
       <Container>
         <div>
           <div className="os-reveal min-w-0">

@@ -1162,6 +1162,15 @@ The flow simulation publishes the cursor's position (`StageInteraction.cursor`, 
 
 **Homepage:** a full-screen opening: the h1 (name and headline), NEX at the centre, his introduction as a transmission, the voice controls (only when a recording is configured: the text-only build ships none of their code), the hint and a scroll cue. It is followed by full-width sections (Introduction, Profile, Featured work, Career highlights, Pathways, Contact), each revealing itself as it scrolls in (CSS scroll-driven animation, Full Motion only). Content comes from `content/profile.ts` and `content/projects.ts`; every entry names its source, and nothing is inferred.
 
+**Mobile Experience 2.0** (16 November 2026; `app.css`, final unlayered block). Phones and tablets get their own composition, in CSS only (no JavaScript; class hooks `os-lane` and `os-intro`), applied below 64rem or 48rem; desktop is unchanged.
+- **Opening:** the name as the headline and the role as a teal mono line beneath it, with NEX a little larger. Short screens (≤ 740 px tall, ≤ 600 px, landscape ≤ 460 px) get a compact opening, so the whole opening, hint and scroll cue included, fits from 320 × 568 to landscape phones (before, landscape and 320 px didn't fit).
+- **Menu:** the recruiter-facing pages first, as large tiles (Projects, Experience, About, Contact, CV), then the environments as rows.
+- **Sections:** one rhythm (3.75 rem), a hairline at each section's start, readable intro type.
+- **Cards:** comfortable padding, 15 px body text at 1.6 line height, and a quiet top edge in the card's agent colour.
+- **Introduction actions:** the main action full width, the other two sharing the row beneath.
+- **Touch:** no tap flash or double-tap delay, and a brief pressed state on touch screens.
+- **Dock:** focused content scrolls clear of NEX's dock (`scroll-padding-bottom`).
+
 **Budget:** the static NEX emblem is now a cacheable SVG file (`public/nex-emblem.svg`), not JavaScript, and the voice controls load only with a recording. That paid for companion mode and the transmission. Final figures (PR #17): initial JS 124.3 KB gz (budget 125; only about 0.7 KB of headroom, so the next addition to the initial set must pay for itself or the budget must be reviewed). The lazy 3D stage, with the spring glide and mirror handover, is 157.2 KB gz (review target 160 KB, hard budget 250 KB) now that the TEST diagnostic is compiled out of production builds (it was 163,805 bytes, 35 under the target, with TEST's 2.8 KB chunk counted). Untested internal error messages were shortened, and explanatory comments are kept out of GLSL strings (they ship in the bundle).
 
 **TEST morph diagnostic: development builds only.** The Milestone 2.4b.2 `?morph=test` switch (§23) is kept for development behind `MORPH_TEST_BUILD` (`Stage.tsx`), a build-time constant that is true only in the dev server and in builds made with `VITE_MORPH_TEST=1` (`npm run build:morph-test`).
