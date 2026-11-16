@@ -441,19 +441,24 @@
     display: none;
   }
   /*
-   * The mirror spans NEX's footprint but shows mainly his core and rings, at 60 %: enough to keep
-   * him recognisable over cards, while text passing beneath keeps nearly the contrast it has with
-   * NEX behind the page (measured on 320–412 px phones; launch-evidence/review-4).
+   * The mirror shows mainly NEX's core and rings, at 60 %: enough to keep him recognisable over
+   * cards, while text passing beneath keeps nearly the contrast it has with NEX behind the page
+   * (measured on 320–412 px phones; launch-evidence/review-4).
+   *
+   * Its box is just the mask's visible circle (116 % of the spot; opaque to 31 %, clear at 57 % of
+   * the spot's size, as before), so it never reaches past the screen's edge: WebKit draws a canvas
+   * that extends beyond the viewport stretched across its visible part, which put the mirror's
+   * rings beside NEX's own (doubled, blurry rings in Safari).
    */
   .nex-dock-mirror {
     position: absolute;
-    inset: -32%;
-    width: 164%;
-    height: 164%;
+    inset: -8%;
+    width: 116%;
+    height: 116%;
     pointer-events: none;
     opacity: 0;
     transition: opacity 450ms var(--ease-os);
-    mask-image: radial-gradient(circle closest-side, #000 38%, transparent 70%);
+    mask-image: radial-gradient(circle closest-side, #000 53.7%, transparent 99%);
   }
   /* Shown once NEX has arrived in the dock (CompanionMirror), fading in and out. */
   .nex-dock-mirror[data-visible] {
