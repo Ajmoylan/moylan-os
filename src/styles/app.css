@@ -781,11 +781,89 @@
   .os-status[data-status="completed"] {
     color: var(--color-cipher);
   }
+  /* Finished, but no public evidence yet: the completed colour, quieter. */
+  .os-status[data-status="unpublished"] {
+    color: color-mix(in oklab, var(--color-cipher) 70%, var(--color-text-muted));
+  }
   .os-status[data-status="in-progress"] {
     color: var(--color-nex);
   }
   .os-status[data-status="planned"] {
     color: var(--color-forge);
+  }
+
+  /*
+   * About // Meet the human: the portrait in a quiet holographic frame (corner brackets, a cyan
+   * hairline and glow). With Full Motion the glow breathes on NEX's 7.48 s cycle; the portrait
+   * itself never moves or fades, so nothing flashes before or after hydration.
+   */
+  .os-portrait {
+    padding: 0.5rem;
+  }
+  .os-portrait img {
+    border-radius: 0.875rem;
+    border: 1px solid rgb(63 224 208 / 0.28);
+    box-shadow:
+      0 0 0 1px rgb(5 8 11 / 0.6),
+      0 24px 60px -28px rgb(63 224 208 / 0.35);
+  }
+  :root[data-motion="full"] .os-portrait img {
+    animation: os-portrait-glow 7.48s ease-in-out infinite;
+  }
+  @keyframes os-portrait-glow {
+    50% {
+      box-shadow:
+        0 0 0 1px rgb(5 8 11 / 0.6),
+        0 24px 70px -24px rgb(63 224 208 / 0.5);
+    }
+  }
+  /* NEX's line on About sits under the heading, not beneath him: no trace, aligned left. */
+  .os-about-tx {
+    margin-top: 0.25rem;
+  }
+  .os-about-tx::before {
+    display: none;
+  }
+
+  /* Experience timeline: a rail in the page's accent with a node per role, most recent first. */
+  .os-timeline {
+    position: relative;
+    display: grid;
+    gap: 1.25rem;
+  }
+  .os-timeline::before {
+    content: "";
+    position: absolute;
+    top: 1.5rem;
+    bottom: 1.5rem;
+    left: 0.4375rem;
+    width: 1px;
+    background: linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--accent) 60%, transparent),
+      color-mix(in oklab, var(--accent) 6%, transparent)
+    );
+  }
+  .os-timeline > li {
+    position: relative;
+    min-width: 0; /* grid items may shrink below their longest word (enlarged text) */
+    padding-left: 2rem;
+  }
+  @media (min-width: 40rem) {
+    .os-timeline > li {
+      padding-left: 2.75rem;
+    }
+  }
+  .os-timeline-dot {
+    position: absolute;
+    top: 1.75rem;
+    left: 0;
+    width: 0.9375rem;
+    height: 0.9375rem;
+    border: 1px solid color-mix(in oklab, var(--accent) 80%, transparent);
+    border-radius: 999px;
+    background: radial-gradient(circle, var(--accent) 0 28%, var(--color-obsidian) 34%);
+    box-shadow: 0 0 12px color-mix(in oklab, var(--accent) 45%, transparent);
   }
 
   /* Prose for long-form pages (privacy notice). */
@@ -880,6 +958,16 @@ summary {
   /* NEX takes a little more of the opening on phones (he docks as soon as the visitor scrolls). */
   [data-nex-slot="hero"] {
     width: min(76vw, 34svh, 26rem);
+  }
+}
+
+/* Phones and tablets in portrait: the headline's two phrases on their own lines (not landscape). */
+@media (max-width: 63.99rem) and (min-height: 461px) {
+  #hero-title .os-headline-part {
+    display: block;
+  }
+  #hero-title .os-headline-sep {
+    display: none;
   }
 }
 

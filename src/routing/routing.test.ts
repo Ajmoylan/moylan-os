@@ -45,7 +45,7 @@ describe("agentForPath", () => {
     for (const project of projects) {
       expect(agentForPath(`/projects/${project.slug}`)).toBe(project.agent);
     }
-    expect(agentForPath("/projects/insurance-claims-dotnet")).toBe("forge");
+    expect(agentForPath("/projects/mri-segmentation")).toBe("syn");
   });
 
   it("falls back to NEX for unknown or malformed project paths", () => {

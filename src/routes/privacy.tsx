@@ -30,9 +30,8 @@ export default function Privacy() {
       <div className="max-w-3xl">
         <DevelopmentNotice>
           <p>
-            <strong className="font-medium text-text">Draft.</strong> This notice will be finalised,
-            including contact details, and reviewed against current Norwegian guidance before the
-            site is published.
+            <strong className="font-medium text-text">Draft.</strong> This notice will be finalised
+            and reviewed against current Norwegian guidance before the site is published.
           </p>
         </DevelopmentNotice>
 
@@ -40,7 +39,19 @@ export default function Privacy() {
           <h2>Who is responsible</h2>
           <p>
             {site.owner} is the controller for personal data processed through this website.
-            Contact: <strong>[contact address to be added before launch]</strong>.
+            Contact:{" "}
+            {site.links.email ? (
+              <a
+                href={`mailto:${site.links.email}`}
+                data-inline
+                className="text-nex underline underline-offset-4"
+              >
+                {site.links.email}
+              </a>
+            ) : (
+              <strong>[contact address to be added before launch]</strong>
+            )}
+            .
           </p>
 
           <h2>What is processed, and why</h2>
