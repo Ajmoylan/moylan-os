@@ -826,7 +826,10 @@
  * screens only; desktop is unchanged. No content changes; no JavaScript.
  */
 
-/* Touch: no grey tap flash or double-tap delay; a brief, quiet pressed state on touch screens. */
+/*
+ * Touch: no grey tap flash or double-tap delay; a brief, quiet pressed state on touch screens. Not on
+ * NEX's launchers: they are transparent (NEX himself responds), and a scroll often starts on them.
+ */
 a,
 button,
 summary {
@@ -834,10 +837,12 @@ summary {
   touch-action: manipulation;
 }
 @media (hover: none) {
-  :where(a, button):active {
+  :where(a, button):not(.nex-launcher):active {
     filter: brightness(1.18);
   }
-  :where(a.rounded-full, button.rounded-full, a.rounded-md, button.rounded-md):active {
+  :where(a.rounded-full, button.rounded-full, a.rounded-md, button.rounded-md):not(
+      .nex-launcher
+    ):active {
     transform: scale(0.97);
   }
 }

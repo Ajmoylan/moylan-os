@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createRoutesStub } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NexCompanion } from "./NexCompanion";
+import { NexCompanion, SCROLL_LEAVE_PX, SCROLL_RETURN_PX } from "./NexCompanion";
 import { NexSlot } from "./NexSlot";
 import { setNexMinimised, setNexPlacement } from "./placement";
 
@@ -22,13 +22,13 @@ class FakeObserver {
   disconnect() {}
 }
 
-function page() {
+function page(dockOnScroll?: string) {
   const Stub = createRoutesStub([
     {
       path: "/",
       Component: () => (
         <>
-          <NexSlot id="hero" poster />
+          <NexSlot id="hero" poster dockOnScroll={dockOnScroll} />
           <NexCompanion />
         </>
       ),
@@ -59,6 +59,53 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+/** Scrolls the window to `y` (jsdom doesn't scroll) and reports it. */
+const scrollTo = async (y: number) => {
+  Object.defineProperty(window, "scrollY", { configurable: true, value: y });
+  await act(async () => window.dispatchEvent(new Event("scroll")));
+};
+const narrow = (matches: boolean) =>
+  vi.stubGlobal("matchMedia", (media: string) => ({ matches, media }) as MediaQueryList);
+
+describe("NexCompanion: the opening on phones docks NEX as soon as the visitor scrolls", () => {
+  afterEach(() => {
+    Object.defineProperty(window, "scrollY", { configurable: true, value: 0 });
+  });
+
+  it("leaves at the first real scroll (never riding the page), returns at the top", async () => {
+    narrow(true);
+    page("(max-width: 63.99rem)");
+    expect(anchor()).toBe("hero");
+    expect(observers).toBe(0); // no visibility threshold to wait for
+    await scrollTo(SCROLL_LEAVE_PX - 4); // a nudge
+    expect(anchor()).toBe("hero");
+    await scrollTo(SCROLL_LEAVE_PX + 16); // the first frame of a flick
+    expect(anchor()).toBe("dock");
+    await scrollTo(SCROLL_RETURN_PX + 4); // between the thresholds: no flapping
+    expect(anchor()).toBe("dock");
+    await scrollTo(0);
+    expect(anchor()).toBe("hero");
+  });
+
+  it("a page opened already scrolled starts with NEX docked", async () => {
+    narrow(true);
+    Object.defineProperty(window, "scrollY", { configurable: true, value: 900 });
+    page("(max-width: 63.99rem)");
+    await act(async () => {});
+    expect(anchor()).toBe("dock");
+  });
+
+  it("wide screens keep the visibility thresholds (the query doesn't match)", async () => {
+    narrow(false);
+    page("(max-width: 63.99rem)");
+    expect(observers).toBe(1);
+    await scrollTo(400);
+    expect(anchor()).toBe("hero"); // only the observer decides
+    await act(async () => observe(0.2));
+    expect(anchor()).toBe("dock");
+  });
 });
 
 describe("NexCompanion", () => {

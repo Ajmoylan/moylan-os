@@ -18,6 +18,13 @@ export const meta: Route.MetaFunction = () => buildMeta({ path: "/" });
 
 /** Wide screens: the opening keeps NEX fully in view until he docks (CSS 64rem = Tailwind's lg). */
 const CONTAIN = "(min-width: 64rem)";
+/**
+ * Phones and tablets: the opening fills the screen, so NEX docks as soon as the visitor scrolls.
+ * Riding the opening up would move him from the page's scroll position as JavaScript sees it, in
+ * steps of up to 137 px while Safari collapses its toolbar (frames of 26–50 ms), against content
+ * Safari scrolls smoothly (measured in iOS 26 Safari in the Simulator, 16 November 2026).
+ */
+const DOCK_ON_SCROLL = "(max-width: 63.99rem)";
 
 /**
  * NEX's voice controls, only when this build has a recording: the deliberate text-only production
@@ -107,6 +114,7 @@ export default function Home() {
           id="hero"
           poster
           contain={CONTAIN}
+          dockOnScroll={DOCK_ON_SCROLL}
           describedBy="nex-hint"
           className="my-4 aspect-square w-[min(68vw,30svh,26rem)] sm:my-6"
         />
