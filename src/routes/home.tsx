@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ReactNode } from "react";
+import { Fragment, lazy, Suspense, type ReactNode } from "react";
 import { Link } from "react-router";
 import { specialists } from "~/agents/registry";
 import { NexSlot } from "~/components/nex/NexSlot";
@@ -11,7 +11,7 @@ import { buildMeta } from "~/content/meta";
 import { profile } from "~/content/profile";
 import { caseStudiesInPreparation, projects } from "~/content/projects";
 import { site } from "~/content/site";
-import { NEX_INTRO, voice } from "~/content/voice";
+import { LICENSED_RECORDING, NEX_INTRO } from "~/content/voice";
 import type { Route } from "./+types/home";
 
 export const meta: Route.MetaFunction = () => buildMeta({ path: "/" });
@@ -28,10 +28,13 @@ const DOCK_ON_SCROLL = "(max-width: 63.99rem)";
 
 /**
  * NEX's voice controls, only when this build has a recording: the deliberate text-only production
- * configuration ships none of their code.
+ * configuration ships none of their code. The same test as `voice.mode === "audio"` in
+ * content/voice.ts, written so the bundler decides it at build time (the preview setting is
+ * replaced by Vite; LICENSED_RECORDING is a literal): a text-only build drops the branch, the
+ * controls' chunk and the extra shared chunk entirely (initial-JS budget).
  */
 const NexVoice =
-  voice.mode === "audio"
+  import.meta.env.VITE_NEX_VOICE_PREVIEW || LICENSED_RECORDING
     ? lazy(() => import("~/components/nex/NexVoice").then((m) => ({ default: m.NexVoice })))
     : null;
 
@@ -104,7 +107,22 @@ export default function Home() {
         <h1 id="hero-title" className="os-label">
           <span className="text-text">{site.owner}</span>
           <span aria-hidden="true"> · </span>
-          <span>{profile.headline}</span>
+          {/* The headline's two phrases (CV: "… | …"): one line on wide screens, stacked on phones. */}
+          <span>
+            {profile.headline.split(" | ").map((part, index) => (
+              <Fragment key={part}>
+                {index > 0 && (
+                  <>
+                    <span aria-hidden="true" className="os-headline-sep">
+                      {" | "}
+                    </span>
+                    <span className="sr-only">, </span>
+                  </>
+                )}
+                <span className="os-headline-part">{part}</span>
+              </Fragment>
+            ))}
+          </span>
         </h1>
         {/* NEX at the centre, full size, until the visitor scrolls on and he docks (the static
             emblem, which keeps NEX's text equivalent, fades out while he is drawn here);

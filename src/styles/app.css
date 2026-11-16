@@ -961,6 +961,16 @@ summary {
   }
 }
 
+/* Phones and tablets in portrait: the headline's two phrases on their own lines (not landscape). */
+@media (max-width: 63.99rem) and (min-height: 461px) {
+  #hero-title .os-headline-part {
+    display: block;
+  }
+  #hero-title .os-headline-sep {
+    display: none;
+  }
+}
+
 /* Short screens (small phones, landscape): the opening still fits, hint and scroll cue included. */
 @media (max-width: 63.99rem) and (max-height: 740px) {
   #hero-title {

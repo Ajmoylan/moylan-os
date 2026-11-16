@@ -9,12 +9,7 @@ describe("experience content (CV, 16 November 2026)", () => {
     expect(experience.map((r) => [r.organisation, r.title, r.location, roleYears(r)])).toEqual([
       ["Lululemon", "Key Leader", "Oslo, Norway", "2024–2026"],
       ["Meta", "Market Manager, Reality Labs", "London, UK", "2022–2023"],
-      [
-        "Microsoft SureStep",
-        "Business Development Manager, Indirect Channel",
-        "London, UK",
-        "2019–2022",
-      ],
+      ["Microsoft", "Business Development Manager, Indirect Channel", "London, UK", "2019–2022"],
       [
         "Hewlett-Packard",
         "Innovation Manager and Customer Experience Centre Lead",
@@ -22,6 +17,13 @@ describe("experience content (CV, 16 November 2026)", () => {
         "2018–2019",
       ],
     ]);
+  });
+
+  it("presents the Microsoft role as direct Microsoft employment, supporting Ingram Micro", () => {
+    const microsoft = experience.find((r) => r.id === "microsoft")!;
+    expect(microsoft.organisation).toBe("Microsoft");
+    expect(microsoft.points.join(" ")).toMatch(/Ingram Micro, the distribution partner Microsoft/);
+    expect(experience.map((r) => r.organisation).join(" ")).not.toMatch(/SureStep|Ingram/);
   });
 
   it("only highlights figures the role's own CV points state", () => {

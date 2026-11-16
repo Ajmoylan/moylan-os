@@ -2,7 +2,9 @@
  * Alex's professional experience, for the Experience page.
  *
  * Truthfulness rule (DESIGN-BRIEF §10): organisations, role titles, places, dates and achievements
- * are exactly as Alex's CV (version of 16 November 2026) states them. Nothing is inferred: no
+ * are as Alex's CV (version of 16 November 2026) states them, with one confirmation from Alex
+ * (16 November 2026): he was employed directly by Microsoft in 2019–2022, assigned to support the
+ * distribution partner Ingram Micro (he was never employed by Ingram Micro). Nothing is inferred: no
  * extra responsibilities, metrics or outcomes. `highlights` marks the CV's own emphasised figures.
  */
 
@@ -50,13 +52,14 @@ export const experience: readonly Role[] = [
     ],
   },
   {
-    id: "microsoft-surestep",
-    organisation: "Microsoft SureStep",
+    id: "microsoft",
+    organisation: "Microsoft",
     title: "Business Development Manager, Indirect Channel",
     location: "London, UK",
     start: 2019,
     end: 2022,
     points: [
+      "Supported Ingram Micro, the distribution partner Microsoft assigned to this role.",
       "Managed and supported more than 1,000 reseller partners, aligning Microsoft solutions with commercial and technical needs.",
       "Identified overlooked incentive opportunities, including £500,000 (approximately NOK 6 million) in available rebates for one reseller.",
       "Developed go-to-market plans to increase solution adoption and partner revenue.",

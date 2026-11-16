@@ -48,9 +48,7 @@ describe("Home (NEX)", () => {
 
   it("presents verified profile content and featured work with links to the code", () => {
     renderHome();
-    expect(
-      screen.getByText(/experience across HP, the Microsoft partner ecosystem and Meta/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/experience across HP, Microsoft and Meta/)).toBeInTheDocument();
     expect(screen.getByText("Microsoft Azure Fundamentals")).toBeInTheDocument();
     // A predicted result stays labelled predicted until it is awarded.
     expect(screen.getByText(/First-Class Honours predicted/)).toBeInTheDocument();

@@ -1185,7 +1185,7 @@ The flow simulation publishes the cursor's position (`StageInteraction.cursor`, 
 - **Content modules:**
   - `content/profile.ts`: headline, summary, education, certifications, strengths and skills; the homepage loads it.
   - `content/about.ts`: facts, education detail, competencies and "Beyond the code"; About only.
-  - `content/experience.ts`: four roles, most recent first, with the CV's own figures as highlights.
+  - `content/experience.ts`: four roles, most recent first, with the CV's own figures as highlights. Alex confirmed that he was employed directly by Microsoft (2019–2022), assigned to support the distribution partner Ingram Micro; the CV's "Microsoft SureStep" label is not used.
   - `content/projects.ts`: the three CV projects plus SkyScout and MOYLAN//OS.
   - `content/site.ts`: the public email and LinkedIn. The phone number, backup email and CV PDF are deliberately not published.
 - **Truthfulness:**

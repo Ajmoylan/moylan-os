@@ -8,7 +8,7 @@ export const meta: Route.MetaFunction = () =>
   buildMeta({
     title: "Experience",
     description:
-      "Alex Moylan's professional experience: Hewlett-Packard, Microsoft SureStep, Meta Reality Labs and Lululemon.",
+      "Alex Moylan's professional experience: Hewlett-Packard, Microsoft, Meta Reality Labs and Lululemon.",
     path: "/experience",
   });
 
@@ -27,9 +27,9 @@ export default function Experience() {
           title="Experience"
         >
           <p>
-            From enterprise demonstrations at Hewlett-Packard and partner growth in the Microsoft
-            ecosystem to product enablement at Meta: a career spent connecting technology with the
-            people and businesses who use it.
+            From enterprise demonstrations at Hewlett-Packard and partner growth at Microsoft to
+            product enablement at Meta: a career spent connecting technology with the people and
+            businesses who use it.
           </p>
         </PageIntro>
 

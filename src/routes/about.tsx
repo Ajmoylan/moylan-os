@@ -17,7 +17,7 @@ export const meta: Route.MetaFunction = () =>
   buildMeta({
     title: "About",
     description:
-      "Meet Alex Moylan: a British–Irish technology professional in Oslo, combining enterprise customer engagement and business development at HP, the Microsoft partner ecosystem and Meta with software engineering and applied AI.",
+      "Meet Alex Moylan: a British–Irish technology professional in Oslo, combining enterprise customer engagement and business development at HP, Microsoft and Meta with software engineering and applied AI.",
     path: "/about",
   });
 
@@ -87,16 +87,14 @@ export default function About() {
           <h2 id="human-title" className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
             {site.owner}
           </h2>
-          <p className="mt-3 font-mono text-sm tracking-wide text-text-muted">
-            AI technology advisory · Applied AI and enterprise solutions
-          </p>
+          <p className="mt-3 font-mono text-sm tracking-wide text-text-muted">{profile.headline}</p>
 
           <div className="mt-8 max-w-2xl space-y-5 text-lg leading-relaxed text-text-muted">
             <p>
               Alex is a British–Irish technology professional based in Oslo, Norway. His career
-              spans Hewlett-Packard, Microsoft SureStep in the Microsoft partner ecosystem, and Meta
-              Reality Labs: enterprise customer engagement, technology demonstrations and commercial
-              development, now combined with software engineering and applied AI.
+              spans Hewlett-Packard, Microsoft and Meta Reality Labs: enterprise customer
+              engagement, technology demonstrations and commercial development, now combined with
+              software engineering and applied AI.
             </p>
             <p>
               He enjoys connecting what technology can do with the real problems businesses need to

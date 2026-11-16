@@ -32,13 +32,13 @@ export interface Certification {
 }
 
 export const profile = {
-  /** GitHub profile subtitle (the homepage headline; unchanged). */
-  headline: "AI-focused software developer",
+  /** CV headline (approved by Alex as the homepage's positioning). */
+  headline: "AI Technology Advisory | Applied AI & Enterprise Solutions",
   /** GitHub profile subtitle. */
   tagline: "Building real-world tools with LLMs and full-stack systems.",
-  /** CV, Profile. */
+  /** CV, Profile (employer confirmed by Alex: Microsoft, not a partner). */
   summary:
-    "Technology and commercial professional with experience across HP, the Microsoft partner ecosystem and Meta, combining enterprise customer engagement, technical presentations and business development with hands-on applied AI.",
+    "Technology and commercial professional with experience across HP, Microsoft and Meta, combining enterprise customer engagement, technical presentations and business development with hands-on applied AI.",
   /** GitHub profile, "About Me". */
   focus:
     "Particularly interested in AI engineering, backend systems, intelligent applications and production-focused software: turning AI capabilities into useful, reliable real-world products.",
