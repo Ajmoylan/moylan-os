@@ -151,7 +151,7 @@ export function NexCompanion() {
             onPointerLeave={() => signalNex("release", "pointer")}
             onFocus={() => signalNex("hold", "focus")}
             onBlur={() => signalNex("release", "focus")}
-            onClick={() => signalNex("pulse")}
+            onClick={() => signalNex("play")}
           />
         )}
       </div>

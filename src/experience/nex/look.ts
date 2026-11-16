@@ -71,20 +71,98 @@ export const ATTENTION_SECONDS = 0.6;
  */
 export const CURIOSITY = { roll: 0.2, still: 0.35, settle: 0.45 } as const;
 
-/** Playfulness: one graceful turn of the ring assembly on activation, with a little lift. */
-export const TWIRL = { seconds: 1.2, lift: 0.06 } as const;
-
 /**
  * Idle presence (no pointer, e.g. on phones): about every `every` s NEX glances somewhere for
  * `hold` s and back (direction and timing vary per cycle, deterministically from his idle time).
  */
 export const GLANCE = { every: 11, hold: 1.7, yaw: 0.34, pitch: 0.16 } as const;
 
-/** Expressiveness: NEX perks up (scale) with the visitor's attention, by up to this share. */
-export const PERK = 0.05;
-
 /** Arrival: a small nod (radians per second given to the pitch spring) when a glide ends. */
 export const ARRIVAL_NOD = 1.5;
+
+/**
+ * Excitement (Personality 2.1, Ghost-inspired): NEX spins his ring assembly once about his view
+ * axis, the way Ghost turns his shell around his eye, with a small hop (a lift, and a tilt of the
+ * spin towards the visitor so the turn reads in depth). The spin follows a spring whose target
+ * sweeps one turn along an eased `ramp`: it starts gently, peaks briefly (≈ 9 rad/s), overshoots a
+ * little and settles in about 1.7 s, ending in exactly his pose before (a whole turn).
+ *
+ * Triggers: a mouse or pen coming within `near` × his ring radius (re-armed only beyond `far`, and
+ * at most once per `cooldown` s, so a pointer resting nearby never repeats it), activating him and
+ * closing his panel. A new spin waits until the current one has nearly settled (`ready` radians
+ * left), so spins never stack into a frantic whirl.
+ */
+export const EXCITE = {
+  ramp: 1.1,
+  spin: { frequency: 1.4, damping: 0.45 },
+  hop: { frequency: 0.65, damping: 0.5 },
+  /** The hop's starting speed (hop units per second); its peak is ≈ 0.19 after ≈ 0.35 s. */
+  kick: 1.4,
+  /** Scale share per hop unit (≈ 8 % at the peak) and pitch radians per hop unit (≈ 0.3 rad). */
+  lift: 0.45,
+  tilt: 1.6,
+  ready: 0.6,
+  near: 1.4,
+  far: 2.2,
+  cooldown: 3,
+} as const;
+
+/** One excitement's state: the spin's ramp (radians, start time in s) and its two springs. */
+export interface Excitement {
+  from: number;
+  to: number;
+  start: number;
+  spin: Spring;
+  hop: Spring;
+}
+
+export function createExcitement(): Excitement {
+  return { from: 0, to: 0, start: -Infinity, spin: { x: 0, v: 0 }, hop: { x: 0, v: 0 } };
+}
+
+/**
+ * Starts a spin at `clock` (seconds) unless one is still under way. Returns whether it started.
+ */
+export function excite(e: Excitement, clock: number): boolean {
+  if (clock - e.start < EXCITE.ramp || e.to - e.spin.x > EXCITE.ready) return false;
+  e.from = e.to;
+  e.to += 2 * Math.PI;
+  e.start = clock;
+  e.hop.v += EXCITE.kick;
+  return true;
+}
+
+/**
+ * Advances the excitement to `clock` by `dt` seconds. Once a spin has settled, whole turns are
+ * dropped (the same pose), so a resting NEX is exactly at 0.
+ */
+export function exciteStep(e: Excitement, clock: number, dt: number): void {
+  const p = Math.min(Math.max((clock - e.start) / EXCITE.ramp, 0), 1);
+  spring(e.spin, e.from + (e.to - e.from) * p * p * (3 - 2 * p), dt, EXCITE.spin);
+  spring(e.hop, 0, dt, EXCITE.hop);
+  if (p >= 1 && e.to !== 0 && e.spin.x === e.to && e.spin.v === 0) e.from = e.to = e.spin.x = 0;
+}
+
+/** Puts NEX at rest at once (motion reduced, a morph): no spin, no hop. */
+export function calmExcitement(e: Excitement): void {
+  e.from = e.to = 0;
+  e.start = -Infinity;
+  e.spin.x = e.spin.v = e.hop.x = e.hop.v = 0;
+}
+
+/**
+ * The approach detector: true once when the pointer comes within `EXCITE.near` ring radii of NEX
+ * (`distance`, in ring radii) while armed; it is re-armed only once the pointer is beyond
+ * `EXCITE.far`. Writes `state.armed`.
+ */
+export function approached(state: { armed: boolean }, distance: number): boolean {
+  if (distance > EXCITE.far) state.armed = true;
+  else if (state.armed && distance < EXCITE.near) {
+    state.armed = false;
+    return true;
+  }
+  return false;
+}
 
 const clamp = (value: number, limit: number) => Math.max(-limit, Math.min(limit, value));
 /** Deterministic 0 … 1 hash of an integer (no Math.random: frames and tests are reproducible). */
@@ -99,18 +177,6 @@ const hash = (n: number) => {
  */
 export function curiosityRoll(dx: number, dwell: number): number {
   return -CURIOSITY.roll * dwell * clamp(dx * 1.5, 1);
-}
-
-/**
- * The twirl at progress 0 … 1: `roll`, one full turn eased in and out (identical pose at both
- * ends), and `lift`, a scale share rising and falling with it. Writes into `out` and returns it.
- */
-export function twirlAt(progress: number, out: { roll: number; lift: number }) {
-  const t = Math.min(Math.max(progress, 0), 1);
-  const eased = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
-  out.roll = 2 * Math.PI * eased;
-  out.lift = TWIRL.lift * Math.sin(Math.PI * t);
-  return out;
 }
 
 /**

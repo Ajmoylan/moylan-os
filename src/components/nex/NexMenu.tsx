@@ -33,7 +33,7 @@ export function NexMenu() {
       chosen.current = false;
       firstLink.current?.focus();
     } else if (!chosen.current) {
-      // Dismissed (Escape, close, outside): NEX's playful "welcome back" (Full Motion only).
+      // Dismissed (Escape, close, outside): NEX's excited "welcome back" (Full Motion only).
       signalNex("play");
     }
   };

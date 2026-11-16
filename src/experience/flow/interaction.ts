@@ -31,6 +31,8 @@ export interface StageInteraction {
    */
   cursor: Vector2;
   cursorActive: boolean;
+  /** The cursor is a mouse or pen, not a finger (only a hovering pointer can approach NEX). */
+  cursorFine: boolean;
 }
 
 export function createInteraction(radius: number): StageInteraction {
@@ -42,6 +44,7 @@ export function createInteraction(radius: number): StageInteraction {
     radius,
     cursor: new Vector2(),
     cursorActive: false,
+    cursorFine: false,
   };
 }
 
@@ -53,6 +56,7 @@ export function clearInteraction(interaction: StageInteraction): void {
   interaction.velocity.set(0, 0);
   interaction.cursor.set(0, 0);
   interaction.cursorActive = false;
+  interaction.cursorFine = false;
 }
 
 /** The uniforms FLOW_GLSL reads. Spread into a material's uniforms; update with `syncInteraction`. */

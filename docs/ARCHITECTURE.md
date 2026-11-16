@@ -1106,13 +1106,18 @@ The morph's light follows the linear phase in linear light (movement keeps the e
   - Holds are per source (`pointer`, `focus`, `transmission`, `voice`; `lib/nex-events.ts`), so one ending (the introduction finishing, the pointer leaving) never cancels another (keyboard focus). A launcher that moves away with NEX's anchor ends its pointer and focus holds.
 
 **Personality 2.0** (16 November 2026; 70 % JARVIS, 30 % Destiny's Ghost). Small, readable reactions on NEX's existing springs (`nex/look.ts`, `NexAvatar.followCursor`). They are rotations and a few per cent of scale only: no new particles, passes, textures or contexts, his silhouette and placement unchanged, and a handful of scalar operations per frame. All need Full Motion, NEX's own role and a formed NEX; otherwise they ease to rest, and with personality off NEX is exactly his approved look.
-- **Curiosity:** when the pointer rests (below 0.35 NDC/s), NEX tilts his rings towards its side, up to 0.2 rad, a quizzical head-tilt on a sprung roll. Moving the pointer straightens him.
+- **Curiosity:** when a mouse or pen rests (below 0.35 NDC/s), NEX tilts his rings towards its side, up to 0.2 rad, a quizzical head-tilt on a sprung roll. Moving the pointer straightens him.
 - **Idle presence:** with no pointer (phones, or the pointer elsewhere), NEX glances somewhere for about 1.7 s, once in each 11 s cycle of his idle time. Timing and direction vary deterministically, so frames and tests are reproducible.
-- **Playfulness:** when the visitor dismisses his panel and comes back to him (Escape, close, outside), NEX does one graceful, eased turn of his ring assembly with a 6 % lift ("welcome back"). Activation itself only pulses as before, because the panel opens over him. The `play` signal (`lib/nex-events.ts`) counts these in `StageTransition.visibility.plays`.
-- **Expressiveness:** NEX perks up (scale) with the visitor's attention, by up to 5 %.
-- **Arrival:** when a glide ends, a small nod, an impulse to the pitch spring (at most about 0.15 rad). The glide itself is unchanged.
+- **Excitement** (Personality 2.1, replacing 2.0's scripted twirl and 5 % perk): NEX spins his ring assembly once about his view axis, the way Ghost turns his shell around his eye, with a hop (a lift of about 8 % and a tilt of the spin towards the visitor, so the turn reads in depth).
+  - Two springs, no keyframes: the spin's target sweeps one turn along a 1.1 s eased ramp and a spring (1.4 Hz, damping 0.45) follows it, so the spin starts gently, peaks briefly at about 9 rad/s, overshoots by about 11° and settles in about 1.7 s, in exactly his pose before. The hop is an impulse to a second spring (0.65 Hz, damping 0.5).
+  - Triggers: a mouse or pen coming within 1.4 × his ring radius; activating him (any launcher); closing his panel without choosing a destination. The `play` signal (`lib/nex-events.ts`) counts activations and closes in `StageTransition.visibility.plays`.
+  - Never continuous: an approach counts once and is re-armed only once the pointer is beyond 2.2 ring radii, at most once every 3 s. A new spin waits until the current one has nearly settled, so an activation and a quick close never stack into a whirl.
+  - A finger is never an approach: the flow simulation publishes whether the cursor is a mouse or pen (`StageInteraction.cursorFine`), and curiosity and approaches need one. Attention (a hold or a touch on the launcher) only brightens NEX's glow, as before Personality 2.0; it never changes his size.
+  - Known limitation: NEX's panel opens over him, so the spin on activation happens behind it. The visible reaction on phones and desktops is the "welcome back" spin as the panel closes.
+- **Arrival:** when a glide ends, a small nod, an impulse to the pitch spring (at most about 0.15 rad).
+- **The glide is never embellished:** glances, curiosity and approaches wait until NEX has arrived, so the approved opening-to-dock movement is exactly the glide's springs.
 
-The flow simulation publishes the cursor's position (`StageInteraction.cursor`, `cursorActive`) in every pointer mode; shaders don't read it.
+The flow simulation publishes the cursor's position (`StageInteraction.cursor`, `cursorActive`, `cursorFine`) in every pointer mode; shaders don't read it.
 
 **Placement:**
 - **Glide between anchors** (`TransitionClock`). When `data-stage-anchor="nex"` moves to another element (the homepage opening handing NEX to the dock, and back), NEX glides to the new anchor, which is re-measured each frame. It is placed at once without Full Motion. Morphs keep their own segments.

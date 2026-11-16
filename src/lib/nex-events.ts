@@ -13,7 +13,8 @@ export const NEX_ATTENTION_EVENT = "moylan:nex-attention";
  * - `hold`: pointer over / focus on NEX's launcher (a soft, sustained acknowledgement);
  * - `release`: the hold ended;
  * - `pulse`: a single brief acknowledgement (a navigation choice, a sentence spoken);
- * - `play`: the visitor came back to NEX (dismissed his panel): a pulse, plus his playful twirl.
+ * - `play`: the visitor activated NEX or came back to him (dismissed his panel): a pulse, plus his
+ *   excited spin (Full Motion only).
  */
 export type NexAttention = "hold" | "release" | "pulse" | "play";
 

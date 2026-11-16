@@ -101,6 +101,7 @@ export class FlowSimulation implements FrameLayer {
     const sample = pointer.update(dt);
     interaction.cursor.set(sample.u * 2 - 1, sample.v * 2 - 1);
     interaction.cursorActive = sample.active;
+    interaction.cursorFine = sample.fine;
     const field = this.field;
     if (field) {
       field.step(engine.renderer, dt, sample, engine.width / Math.max(1, engine.height));

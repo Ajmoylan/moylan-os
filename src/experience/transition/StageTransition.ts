@@ -35,8 +35,8 @@ export interface AgentVisibility {
    */
   attention: number;
   /**
-   * Personality 2.0: how many playful moments the visitor has given NEX (dismissing his panel and
-   * coming back to him). The agent reacts to each (a twirl, Full Motion only); never reset.
+   * Personality 2.0/2.1: how many playful moments the visitor has given NEX (activating him,
+   * dismissing his panel). The agent reacts to each (an excited spin, Full Motion only); never reset.
    */
   plays: number;
 }

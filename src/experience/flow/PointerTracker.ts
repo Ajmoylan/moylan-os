@@ -20,6 +20,11 @@ export interface PointerSample {
   smoothVy: number;
   /** The pointer is over the page and has moved at least once. */
   active: boolean;
+  /**
+   * The last movement came from a mouse or pen (a pointer that hovers), not a finger: a touch that
+   * starts a scroll is not the visitor approaching something.
+   */
+  fine: boolean;
 }
 
 /** Cap on pointer speed (NDC/s), so a flick can't blow the field apart. */
@@ -36,6 +41,7 @@ export class PointerTracker {
     smoothVx: 0,
     smoothVy: 0,
     active: false,
+    fine: false,
   };
   private movedX = 0;
   private movedY = 0;
@@ -53,6 +59,7 @@ export class PointerTracker {
     this.sample.u = u;
     this.sample.v = v;
     this.sample.active = true;
+    this.sample.fine = event.pointerType !== "touch";
   };
 
   private readonly onLeave = () => {
