@@ -13,12 +13,13 @@ export const site = {
   description:
     "MOYLAN//OS is the immersive, agent-guided portfolio of Alex Moylan: software engineering, applied AI, cloud security and technology advisory.",
   links: {
-    /** Inferred from this repository's remote. Confirm before launch. */
+    /** Alex's CV (16 November 2026) and instructions. */
     github: "https://github.com/Ajmoylan" as string | null,
-    linkedin: null as string | null,
-    /** Public contact address, to be decided (see PRIVACY-COMPLIANCE.md §3, P2). */
-    email: null as string | null,
-    /** Static CV PDF under public/cv/ once approved. */
+    linkedin: "https://www.linkedin.com/in/alex-moylan" as string | null,
+    /** The public contact address (PRIVACY-COMPLIANCE.md §3, P2). Alex's backup address and phone
+     * number are deliberately never published. */
+    email: "alex@moylanos.dev" as string | null,
+    /** Static CV PDF under public/cv/ once Alex approves a final version (not yet). */
     cv: null as string | null,
   },
 } as const;

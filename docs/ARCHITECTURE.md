@@ -1181,6 +1181,25 @@ The flow simulation publishes the cursor's position (`StageInteraction.cursor`, 
 - **Touch:** no tap flash or double-tap delay, and a brief pressed state on touch screens. Not on NEX's launchers: they are transparent (NEX himself reacts), and a first scroll often starts on him.
 - **Dock:** focused content scrolls clear of NEX's dock (`scroll-padding-bottom`).
 
+**Portfolio Content 1.0** (16 November 2026). Alex's real details, sourced from his CV (version of 16 November 2026) and his own instructions, with nothing inferred.
+- **Content modules:**
+  - `content/profile.ts`: headline, summary, education, certifications, strengths and skills; the homepage loads it.
+  - `content/about.ts`: facts, education detail, competencies and "Beyond the code"; About only.
+  - `content/experience.ts`: four roles, most recent first, with the CV's own figures as highlights.
+  - `content/projects.ts`: the three CV projects plus SkyScout and MOYLAN//OS.
+  - `content/site.ts`: the public email and LinkedIn. The phone number, backup email and CV PDF are deliberately not published.
+- **Truthfulness:**
+  - A new project status, `unpublished` ("Completed · not yet public"), covers finished work with no public evidence (the MRI segmentation project). `projects.test.ts` requires it to link to nothing, keeps "completed" for work with public evidence, and refuses planned projects (COPILOT // LAUNCHPAD and the insurance claims app are added only once built).
+  - `experience.test.ts` pins every role to the CV and checks that each highlighted figure appears in that role's own CV points.
+  - A predicted degree result stays labelled "predicted".
+- **About // Meet the human:** a page heading with NEX's line as a transmission, then the portrait beside the introduction (above it below 64rem), key facts, what Alex brings, education and certifications, and "Beyond the code".
+  - The portrait is AVIF with a WebP fallback at 480, 768 and 1086 px. It is imported by the About route only, so no other page requests it (tested), with width and height set and descriptive alt text.
+  - Its frame's glow breathes with NEX's cycle under Full Motion only; the image itself never fades or moves.
+  - NEX's line on About is the transmission's markup, already complete. Typing it would share the homepage's typing code and split it into a chunk of its own, costing 242 bytes of initial JS gzip overhead.
+- **Experience:** a timeline (`.os-timeline`) of the existing panel cards on an ATLAS-accent rail. Its cards and About's sections are not revealed on scroll: a card straddling the fold mid-fade failed axe's contrast check at some screen sizes.
+- **Projects:** the project cards now show each project's stack and its public code link, as the homepage cards do.
+- **Budget:** initial JS is 124.9 KB gz (budget 125). Content added to the homepage's data now needs either moving out of its initial load or an explicit budget review; see `docs/AZURE-READINESS.md` §6.
+
 **Budget:** the static NEX emblem is now a cacheable SVG file (`public/nex-emblem.svg`), not JavaScript, and the voice controls load only with a recording. That paid for companion mode and the transmission. Final figures (PR #17): initial JS 124.3 KB gz (budget 125; only about 0.7 KB of headroom, so the next addition to the initial set must pay for itself or the budget must be reviewed). The lazy 3D stage, with the spring glide and mirror handover, is 157.2 KB gz (review target 160 KB, hard budget 250 KB) now that the TEST diagnostic is compiled out of production builds (it was 163,805 bytes, 35 under the target, with TEST's 2.8 KB chunk counted). Untested internal error messages were shortened, and explanatory comments are kept out of GLSL strings (they ship in the bundle).
 
 **TEST morph diagnostic: development builds only.** The Milestone 2.4b.2 `?morph=test` switch (§23) is kept for development behind `MORPH_TEST_BUILD` (`Stage.tsx`), a build-time constant that is true only in the dev server and in builds made with `VITE_MORPH_TEST=1` (`npm run build:morph-test`).

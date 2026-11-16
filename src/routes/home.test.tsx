@@ -49,9 +49,12 @@ describe("Home (NEX)", () => {
   it("presents verified profile content and featured work with links to the code", () => {
     renderHome();
     expect(
-      screen.getByText(/Computing & IT graduate from The Open University/),
+      screen.getByText(/experience across HP, the Microsoft partner ecosystem and Meta/),
     ).toBeInTheDocument();
     expect(screen.getByText("Microsoft Azure Fundamentals")).toBeInTheDocument();
+    // A predicted result stays labelled predicted until it is awarded.
+    expect(screen.getByText(/First-Class Honours predicted/)).toBeInTheDocument();
+    expect(screen.queryByText(/graduate/i)).toBeNull();
     const work = screen.getByRole("region", { name: "Things I've built" });
     const code = within(work)
       .getAllByRole("link", { name: /View the code on GitHub/ })

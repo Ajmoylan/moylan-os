@@ -36,7 +36,6 @@ const NexVoice =
     : null;
 
 const featured = projects.filter((project) => project.featured);
-const planned = projects.filter((project) => project.status === "planned");
 
 /**
  * A homepage section: full width (NEX accompanies the visitor from the companion dock, so no lane
@@ -222,8 +221,8 @@ export default function Home() {
         title="Things I've built"
         intro={
           <p>
-            Each project carries an honest status, and links straight to its code. The case studies
-            grow as the projects do.
+            Each project carries an honest status, and links straight to its code where it&apos;s
+            public. The case studies grow as the projects do.
           </p>
         }
       >
@@ -285,13 +284,16 @@ export default function Home() {
         title="Education, credentials and experience"
       >
         <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <li className="os-panel p-6">
-            <p className="os-label">Education</p>
-            <p className="mt-3 text-lg font-medium">{profile.education.subject}</p>
-            <p className="mt-1 text-text-muted">
-              {profile.education.status} · {profile.education.institution}
-            </p>
-          </li>
+          {profile.education.map((education) => (
+            <li key={education.degree} className="os-panel p-6">
+              <p className="os-label">Education</p>
+              <p className="mt-3 text-lg font-medium">{education.degree}</p>
+              <p className="mt-1 text-text-muted">
+                {education.institution} · {education.years}
+              </p>
+              <p className="mt-1 text-sm text-text-muted">{education.status}</p>
+            </li>
+          ))}
           {profile.certifications.map((certification) => (
             <li key={certification.code} className="os-panel p-6">
               <p className="os-label">Certification</p>
@@ -299,6 +301,7 @@ export default function Home() {
               <p className="mt-1 text-text-muted">
                 {certification.issuer} · {certification.code}
               </p>
+              <p className="mt-1 text-sm text-text-muted">{certification.statusLabel}</p>
             </li>
           ))}
           <li className="os-panel p-6 sm:col-span-2">
@@ -322,16 +325,6 @@ export default function Home() {
               </Link>
             </p>
           </li>
-          {planned.map((project) => (
-            <li key={project.slug} className="os-panel p-6 sm:col-span-2">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="os-label">Next</p>
-                <StatusBadge status={project.status} />
-              </div>
-              <p className="mt-3 text-lg font-medium">{project.title}</p>
-              <p className="mt-1 text-sm leading-relaxed text-text-muted">{project.summary}</p>
-            </li>
-          ))}
         </ul>
       </Lane>
 
