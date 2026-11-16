@@ -25,11 +25,20 @@ export function NexMenu() {
   const panel = useRef<HTMLDivElement>(null);
   const firstLink = useRef<HTMLAnchorElement>(null);
 
+  /** A destination was chosen (the panel closes for a navigation, not a dismissal). */
+  const chosen = useRef(false);
   const onToggle = (event: SyntheticEvent<HTMLDivElement>) => {
     const { newState } = event.nativeEvent as ToggleEvent;
-    if (newState === "open") firstLink.current?.focus();
+    if (newState === "open") {
+      chosen.current = false;
+      firstLink.current?.focus();
+    } else if (!chosen.current) {
+      // Dismissed (Escape, close, outside): NEX's playful "welcome back" (Full Motion only).
+      signalNex("play");
+    }
   };
   const choose = () => {
+    chosen.current = true;
     signalNex("pulse");
     panel.current?.hidePopover?.();
   };

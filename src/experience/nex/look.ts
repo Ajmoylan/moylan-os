@@ -59,7 +59,77 @@ export const ATTENTION_HOLD = 0.45;
 /** Time constant (s) of the attention level's approach to its target. */
 export const ATTENTION_SECONDS = 0.6;
 
+/*
+ * Personality 2.0 (70 % JARVIS, 30 % Ghost): small, readable reactions on NEX's existing springs.
+ * Rotations and a few per cent of scale only, so his silhouette, particles and placement never change.
+ */
+
+/**
+ * Curiosity: when the visitor's pointer pauses, NEX tilts his rings towards its side (a quizzical
+ * head-tilt, up to `roll` radians), straightening again as it moves on. The pointer counts as
+ * paused below `still` NDC per second; the tilt builds and fades with a `settle` s time constant.
+ */
+export const CURIOSITY = { roll: 0.2, still: 0.35, settle: 0.45 } as const;
+
+/** Playfulness: one graceful turn of the ring assembly on activation, with a little lift. */
+export const TWIRL = { seconds: 1.2, lift: 0.06 } as const;
+
+/**
+ * Idle presence (no pointer, e.g. on phones): about every `every` s NEX glances somewhere for
+ * `hold` s and back (direction and timing vary per cycle, deterministically from his idle time).
+ */
+export const GLANCE = { every: 11, hold: 1.7, yaw: 0.34, pitch: 0.16 } as const;
+
+/** Expressiveness: NEX perks up (scale) with the visitor's attention, by up to this share. */
+export const PERK = 0.05;
+
+/** Arrival: a small nod (radians per second given to the pitch spring) when a glide ends. */
+export const ARRIVAL_NOD = 1.5;
+
 const clamp = (value: number, limit: number) => Math.max(-limit, Math.min(limit, value));
+/** Deterministic 0 … 1 hash of an integer (no Math.random: frames and tests are reproducible). */
+const hash = (n: number) => {
+  const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+};
+
+/**
+ * The curiosity tilt for a pointer `dx` NDC (aspect-corrected) to the right of NEX and a dwell
+ * level 0 … 1: negative (clockwise, the top towards the pointer) when the pointer is on his right.
+ */
+export function curiosityRoll(dx: number, dwell: number): number {
+  return -CURIOSITY.roll * dwell * clamp(dx * 1.5, 1);
+}
+
+/**
+ * The twirl at progress 0 … 1: `roll`, one full turn eased in and out (identical pose at both
+ * ends), and `lift`, a scale share rising and falling with it. Writes into `out` and returns it.
+ */
+export function twirlAt(progress: number, out: { roll: number; lift: number }) {
+  const t = Math.min(Math.max(progress, 0), 1);
+  const eased = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+  out.roll = 2 * Math.PI * eased;
+  out.lift = TWIRL.lift * Math.sin(Math.PI * t);
+  return out;
+}
+
+/**
+ * The idle glance NEX aims for at idle time `time` (seconds): a turn somewhere during a short
+ * window in each `GLANCE.every` s cycle, otherwise straight ahead. Writes into `out`.
+ */
+export function glanceAt(time: number, out: Look): Look {
+  const cycle = Math.floor(time / GLANCE.every);
+  const start = 2 + 6 * hash(cycle);
+  const local = time - cycle * GLANCE.every;
+  if (cycle < 1 || local < start || local > start + GLANCE.hold) {
+    out.yaw = out.pitch = 0;
+    return out;
+  }
+  const side = hash(cycle + 0.5) < 0.5 ? -1 : 1;
+  out.yaw = side * GLANCE.yaw * (0.6 + 0.4 * hash(cycle + 0.25));
+  out.pitch = GLANCE.pitch * (hash(cycle + 0.75) * 2 - 1);
+  return out;
+}
 
 export interface Look {
   yaw: number;

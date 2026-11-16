@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  CURIOSITY,
+  GLANCE,
+  TWIRL,
+  curiosityRoll,
+  glanceAt,
+  twirlAt,
   CORE_LEAN_UNITS,
   LOOK_SPRING,
   PULSE,
@@ -117,5 +123,43 @@ describe("organic motion and the energy pulse", () => {
     pulseAt(PULSE.period + 0.4, out);
     expect(out.strength).toBeCloseTo(early); // it repeats
     expect(PULSE.period * 2).toBeCloseTo(NEX_PARAMS.breath.period); // in step with the breathing
+  });
+});
+
+describe("Personality 2.0 helpers", () => {
+  it("curiosity tilts towards the pointer's side, bounded, and not at all without dwelling", () => {
+    expect(curiosityRoll(0.5, 1)).toBeLessThan(0); // pointer on the right: clockwise
+    expect(curiosityRoll(-0.5, 1)).toBeGreaterThan(0);
+    expect(Math.abs(curiosityRoll(5, 1))).toBeCloseTo(CURIOSITY.roll, 10);
+    expect(curiosityRoll(0.5, 0)).toBe(-0); // a moving pointer: no tilt
+  });
+
+  it("a twirl is one full turn, eased, with a lift that starts and ends at zero", () => {
+    const out = { roll: 0, lift: 0 };
+    expect(twirlAt(0, out)).toEqual({ roll: 0, lift: 0 });
+    expect(twirlAt(1, out).roll).toBeCloseTo(2 * Math.PI, 10);
+    expect(twirlAt(1, out).lift).toBeCloseTo(0, 10);
+    expect(twirlAt(0.5, out).roll).toBeCloseTo(Math.PI, 10);
+    expect(twirlAt(0.5, out).lift).toBeCloseTo(TWIRL.lift, 10);
+    // Eased: slow at the ends, so the turn never starts or stops with a jolt.
+    expect(twirlAt(0.05, out).roll).toBeLessThan(0.01 * 2 * Math.PI);
+  });
+
+  it("idle glances are occasional, bounded and deterministic", () => {
+    const out = { yaw: 0, pitch: 0 };
+    let glancing = 0;
+    let samples = 0;
+    for (let t = 0; t < 10 * GLANCE.every; t += 0.05, samples++) {
+      glanceAt(t, out);
+      if (t < GLANCE.every) expect(out).toEqual({ yaw: 0, pitch: 0 }); // never straight away
+      if (out.yaw !== 0) glancing++;
+      expect(Math.abs(out.yaw)).toBeLessThanOrEqual(GLANCE.yaw);
+      expect(Math.abs(out.pitch)).toBeLessThanOrEqual(GLANCE.pitch);
+    }
+    // About one glance of GLANCE.hold seconds per cycle after the first: occasional, not constant.
+    expect(glancing / samples).toBeGreaterThan(0.1);
+    expect(glancing / samples).toBeLessThan(0.2);
+    const a = glanceAt(30.3, { yaw: 0, pitch: 0 });
+    expect(glanceAt(30.3, { yaw: 0, pitch: 0 })).toEqual(a);
   });
 });

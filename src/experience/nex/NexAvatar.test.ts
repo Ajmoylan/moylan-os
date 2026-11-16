@@ -12,8 +12,9 @@ import { nexPalette, rgb } from "../ambient/config";
 import type { Engine } from "../engine/Engine";
 import { createInteraction } from "../flow/interaction";
 import { createTransition } from "../transition/StageTransition";
-import { CORE_LEAN_UNITS } from "./look";
+import { CORE_LEAN_UNITS, GLANCE, PERK, TWIRL, glanceAt } from "./look";
 import { NexAvatar, type NexAvatarProps } from "./NexAvatar";
+import { CAMERA_DISTANCE } from "./placement";
 import { generateNexShape } from "./shape";
 
 /**
@@ -319,5 +320,142 @@ describe("NexAvatar personality (launch sprint)", () => {
     expect(peakV.glow).toBeCloseTo(peakA.glow + 0.22, 6);
     expect(peakV.atmosphere).toBeCloseTo(peakA.atmosphere + 0.5, 6);
     expect(peakV.shell).toBeGreaterThan(peakA.shell);
+  });
+});
+
+describe("NexAvatar Personality 2.0", () => {
+  /** A sized engine with its camera where the stage puts it (looking at NEX from his distance). */
+  const sized = () => {
+    Object.assign(engine, { width: 1200, height: 800, dpr: 1 });
+    engine.camera.position.set(0, 0, CAMERA_DISTANCE);
+  };
+  const formedFrame = (time = 0) => {
+    Object.assign(transition.visibility, { fade: 1, arrival: 2.4, formed: 1, time });
+    Object.assign(transition.placement.displayed, { x: 0, y: 0, scale: 0.8, onScreen: true });
+  };
+  /**
+   * One NEX with personality. `away()` is how far his rings are turned from his approved pose,
+   * captured after warm-up frames (two avatars can't be compared side by side: they share
+   * Three.js state), at the same idle time.
+   */
+  const pair = (motion: "full" | "reduced" = "full") => {
+    const n = nex(true);
+    n.setProps(props({ motion }));
+    const mine = scene.children[0]!;
+    const frames = (count: number, advance = true) => {
+      for (let i = 0; i < count; i++) {
+        if (advance) transition.visibility.time += 1 / 60;
+        n.update(engine, 1 / 60);
+      }
+    };
+    let rest = mine.quaternion.clone();
+    const settle = () => {
+      frames(3, false);
+      rest = mine.quaternion.clone();
+    };
+    // Normalised: NEX's approved view quaternion is stored to 4 decimals (not exactly unit length),
+    // and angleTo reports ~0.015 rad between two copies of an unnormalised quaternion.
+    const away = () => mine.quaternion.clone().normalize().angleTo(rest.clone().normalize());
+    return { n, mine, frames, away, settle };
+  };
+  const tilt = (n: NexAvatar) => (n as unknown as { roll: number }).roll;
+
+  it("curiosity: a resting pointer earns a tilt towards its side; moving it straightens NEX", () => {
+    sized();
+    const { n, frames } = pair();
+    formedFrame();
+    interaction.mode = "analytic";
+    interaction.cursorActive = true;
+    interaction.cursor.set(0.6, 0); // to NEX's right, resting
+    frames(120);
+    expect(tilt(n)).toBeLessThan(-0.1); // clockwise, towards the pointer
+    for (let i = 0; i < 120; i++) {
+      interaction.cursor.set(0.6 * Math.cos(i / 4), 0.4 * Math.sin(i / 4)); // moving on
+      frames(1);
+    }
+    expect(Math.abs(tilt(n))).toBeLessThan(0.03);
+  });
+
+  it("playfulness: an activation twirls NEX once and lands him exactly in the approved pose", () => {
+    sized();
+    const { mine, frames, away, settle } = pair();
+    formedFrame(1);
+    settle();
+    transition.visibility.plays++;
+    frames(Math.round((TWIRL.seconds * 60) / 2));
+    expect(away()).toBeGreaterThan(2); // well into the turn
+    expect(mine.scale.x).toBeGreaterThan(0.8 * (1 + TWIRL.lift * 0.9)); // the lift
+    frames(90);
+    expect(away()).toBeLessThan(1e-6);
+    expect(mine.scale.x).toBe(0.8);
+  });
+
+  it("idle presence: with no pointer NEX glances now and then, then looks ahead again", () => {
+    sized();
+    const { frames, away, settle } = pair();
+    let start = GLANCE.every;
+    const look = { yaw: 0, pitch: 0 };
+    while (glanceAt(start, look).yaw === 0) start += 0.05;
+    formedFrame(start - 0.2); // just before the glance: straight ahead
+    settle();
+    transition.visibility.time = start;
+    frames(60, false);
+    expect(away()).toBeGreaterThan(0.1);
+    transition.visibility.time = start + GLANCE.hold + 0.5; // after the glance
+    frames(600, false);
+    expect(away()).toBeLessThan(1e-6);
+  });
+
+  it("arrival: a small nod when a glide ends, then exactly the approved pose", () => {
+    sized();
+    const { frames, away, settle } = pair();
+    formedFrame(1);
+    settle();
+    transition.placement.gliding = true;
+    frames(2, false);
+    transition.placement.gliding = false;
+    let deepest = 0;
+    for (let i = 0; i < 40; i++) {
+      frames(1, false);
+      deepest = Math.max(deepest, away());
+    }
+    expect(deepest).toBeGreaterThan(0.05); // visible
+    expect(deepest).toBeLessThan(0.3); // restrained
+    frames(600, false);
+    expect(away()).toBeLessThan(1e-6);
+  });
+
+  it("expressiveness: attention perks NEX up a little (scale only, never position)", () => {
+    sized();
+    const { mine, frames } = pair();
+    formedFrame(1);
+    transition.visibility.attention = 1;
+    frames(1, false);
+    expect(mine.scale.x).toBeCloseTo(0.8 * (1 + PERK), 10);
+    expect(mine.position.toArray()).toEqual([0, 0, 0]);
+  });
+
+  it("none of it without Full Motion or while NEX is still forming", () => {
+    sized();
+    for (const [motion, formed] of [
+      ["reduced", 1],
+      ["full", 0.5],
+    ] as const) {
+      scene.clear();
+      transition = createTransition("nex");
+      interaction = createInteraction(0.1);
+      const { mine, frames, away, settle } = pair(motion);
+      formedFrame(1);
+      transition.visibility.formed = formed;
+      settle();
+      transition.visibility.plays++;
+      transition.placement.gliding = true;
+      frames(2);
+      transition.placement.gliding = false;
+      transition.visibility.time = 30;
+      frames(120);
+      expect(away(), `${motion} ${formed}`).toBeLessThan(1e-6);
+      expect(mine.scale.x).toBe(0.8);
+    }
   });
 });

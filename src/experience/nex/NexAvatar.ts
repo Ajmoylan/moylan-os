@@ -30,6 +30,14 @@ import { Resources } from "../engine/resources";
 import { interactionUniforms, syncInteraction } from "../flow/interaction";
 import { drawCount } from "../performance/quality";
 import {
+  ARRIVAL_NOD,
+  CURIOSITY,
+  PERK,
+  TWIRL,
+  curiosityRoll,
+  damp,
+  glanceAt,
+  twirlAt,
   ATTENTION_GLOW,
   CORE_LEAN_UNITS,
   CORE_SPRING,
@@ -190,7 +198,21 @@ export class NexAvatar implements AgentView {
     pitch: { x: 0, v: 0 } as Spring,
     leanX: { x: 0, v: 0 } as Spring,
     leanY: { x: 0, v: 0 } as Spring,
+    roll: { x: 0, v: 0 } as Spring,
   };
+  /**
+   * Personality 2.0 (Full Motion only, NEX's own role): the curious tilt (sprung, like the turn),
+   * the pointer's last position and how long it has rested (0 … 1), the twirl after an activation
+   * (its start in NEX's idle time, −1 when none), and the glide state seen last frame (an arrival
+   * nod when a glide ends). All exactly zero at rest.
+   */
+  private roll = 0;
+  private readonly lastCursor = { x: 0, y: 0, valid: false };
+  private dwell = 0;
+  private readonly twirl = { roll: 0, lift: 0 };
+  private twirlStart = -1;
+  private plays = 0;
+  private wasGliding = false;
   /** The energy pulse: wavefront radius and strength (uPulse), and the glow's swell. */
   private readonly pulse = { radius: 0, strength: 0, swell: 0 };
   private readonly pulseUniform: IUniform<Vector2> = { value: new Vector2() };
@@ -477,15 +499,19 @@ export class NexAvatar implements AgentView {
 
     // Place, scale and turn NEX so its three-quarter view faces the camera from its anchor.
     root.position.set(x, y, 0);
-    root.scale.setScalar(scale);
+    // Personality 2.0: NEX perks up with the visitor's attention (0 without Full Motion) and lifts a
+    // little as he twirls; exactly his placement's scale at rest.
+    const perk = this.personal ? PERK * this.context.visibility.attention + this.twirl.lift : 0;
+    root.scale.setScalar(perk === 0 ? scale : scale * (1 + perk));
     this.dir.copy(camera.position).sub(root.position).normalize();
     this.facing.setFromUnitVectors(UNIT_Z, this.dir);
     // Launch sprint (personality): the rings turn towards the cursor, in the camera-facing frame,
     // and the core leans towards it (Full Motion with pointer effects only; NEX's own role only).
     // At rest both are exactly zero and skipped, so NEX's approved idle transform is unchanged.
     if (this.personal) this.followCursor(engine, x, y, delta);
-    if (this.look.yaw !== 0 || this.look.pitch !== 0) {
-      this.lookEuler.set(this.look.pitch, this.look.yaw, 0);
+    const roll = this.roll + this.twirl.roll;
+    if (this.look.yaw !== 0 || this.look.pitch !== 0 || roll !== 0) {
+      this.lookEuler.set(this.look.pitch, this.look.yaw, roll);
       this.facing.multiply(this.lookTurn.setFromEuler(this.lookEuler));
     }
     root.quaternion.copy(this.facing.multiply(this.view));
@@ -543,12 +569,18 @@ export class NexAvatar implements AgentView {
 
   /**
    * Advances the damped ring turn and core lean towards the cursor (or back to rest) by `delta`
-   * seconds.
+   * seconds, and Personality 2.0's reactions: the curious tilt when the pointer rests, an idle
+   * glance when there is no pointer, a twirl after an activation and a nod when a glide arrives.
+   * All of them need Full Motion, NEX's own role and a formed NEX; otherwise they ease to rest.
    */
   private followCursor(engine: Engine, x: number, y: number, delta: number): void {
-    const { interaction } = this.context;
+    const { interaction, visibility, placement } = this.context;
     const aim = this.lookAim;
     const lean = this.leanAim;
+    const dt = Math.min(Math.max(delta, 0), 0.1);
+    const lively = this.role === "none" && this.props?.motion === "full" && visibility.formed >= 1;
+    const cursor = this.lastCursor;
+    let rollAim = 0;
     if (this.role === "none" && interaction.mode !== "none" && interaction.cursorActive) {
       // NEX's centre in NDC: world (x, y) on the z = 0 plane, CAMERA_DISTANCE from the camera.
       const aspect = engine.width / Math.max(1, engine.height);
@@ -558,16 +590,43 @@ export class NexAvatar implements AgentView {
       const { x: cx, y: cy } = interaction.cursor;
       lookTarget(cx, cy, nx, ny, aspect, aim);
       leanTarget(cx, cy, nx, ny, aspect, lean);
+      // Curiosity: a resting pointer earns a quizzical tilt towards its side.
+      const speed =
+        cursor.valid && dt > 0 ? Math.hypot(cx - cursor.x, cy - cursor.y) / dt : Infinity;
+      this.dwell = damp(this.dwell, speed < CURIOSITY.still ? 1 : 0, dt, CURIOSITY.settle);
+      if (lively) rollAim = curiosityRoll((cx - nx) * aspect, this.dwell);
+      cursor.x = cx;
+      cursor.y = cy;
+      cursor.valid = true;
     } else {
-      aim.yaw = aim.pitch = 0;
       lean.x = lean.y = 0;
+      this.dwell = 0;
+      cursor.valid = false;
+      // Idle presence: with no pointer (phones, or the pointer elsewhere), an occasional glance.
+      if (lively) glanceAt(visibility.time, aim);
+      else aim.yaw = aim.pitch = 0;
     }
-    const dt = Math.min(Math.max(delta, 0), 0.1);
     const s = this.springs;
+    // Arrival: a small nod as a glide into his spot ends (the glide itself is untouched).
+    if (this.wasGliding && !placement.gliding && lively) s.pitch.v -= ARRIVAL_NOD;
+    this.wasGliding = placement.gliding;
     this.look.yaw = spring(s.yaw, aim.yaw, dt, LOOK_SPRING);
     this.look.pitch = spring(s.pitch, aim.pitch, dt, LOOK_SPRING);
+    this.roll = spring(s.roll, rollAim, dt, LOOK_SPRING);
     this.lean.x = spring(s.leanX, lean.x, dt, CORE_SPRING);
     this.lean.y = spring(s.leanY, lean.y, dt, CORE_SPRING);
+    // Playfulness: a twirl for each new activation of his launcher.
+    if (visibility.plays !== this.plays) {
+      this.plays = visibility.plays;
+      if (lively) this.twirlStart = visibility.time;
+    }
+    if (this.twirlStart >= 0) {
+      const progress = (visibility.time - this.twirlStart) / TWIRL.seconds;
+      if (progress >= 1 || !lively) {
+        this.twirlStart = -1;
+        this.twirl.roll = this.twirl.lift = 0;
+      } else twirlAt(progress, this.twirl);
+    }
   }
 
   /**

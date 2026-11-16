@@ -1105,6 +1105,13 @@ The morph's light follows the linear phase in linear light (movement keeps the e
 - **Attention.** Written by `TransitionClock` into `StageTransition.visibility.attention`: a held level of 0.45 while anything holds NEX's attention, and 1 on activation, decaying over 0.6 s. It adds up to +0.32 to the glow intensity and half that to the shell.
   - Holds are per source (`pointer`, `focus`, `transmission`, `voice`; `lib/nex-events.ts`), so one ending (the introduction finishing, the pointer leaving) never cancels another (keyboard focus). A launcher that moves away with NEX's anchor ends its pointer and focus holds.
 
+**Personality 2.0** (16 November 2026; 70 % JARVIS, 30 % Destiny's Ghost). Small, readable reactions on NEX's existing springs (`nex/look.ts`, `NexAvatar.followCursor`). They are rotations and a few per cent of scale only: no new particles, passes, textures or contexts, his silhouette and placement unchanged, and a handful of scalar operations per frame. All need Full Motion, NEX's own role and a formed NEX; otherwise they ease to rest, and with personality off NEX is exactly his approved look.
+- **Curiosity:** when the pointer rests (below 0.35 NDC/s), NEX tilts his rings towards its side, up to 0.2 rad, a quizzical head-tilt on a sprung roll. Moving the pointer straightens him.
+- **Idle presence:** with no pointer (phones, or the pointer elsewhere), NEX glances somewhere for about 1.7 s, once in each 11 s cycle of his idle time. Timing and direction vary deterministically, so frames and tests are reproducible.
+- **Playfulness:** when the visitor dismisses his panel and comes back to him (Escape, close, outside), NEX does one graceful, eased turn of his ring assembly with a 6 % lift ("welcome back"). Activation itself only pulses as before, because the panel opens over him. The `play` signal (`lib/nex-events.ts`) counts these in `StageTransition.visibility.plays`.
+- **Expressiveness:** NEX perks up (scale) with the visitor's attention, by up to 5 %.
+- **Arrival:** when a glide ends, a small nod, an impulse to the pitch spring (at most about 0.15 rad). The glide itself is unchanged.
+
 The flow simulation publishes the cursor's position (`StageInteraction.cursor`, `cursorActive`) in every pointer mode; shaders don't read it.
 
 **Placement:**
