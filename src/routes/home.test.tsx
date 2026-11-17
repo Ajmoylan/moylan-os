@@ -11,27 +11,39 @@ function renderHome() {
 }
 
 const region = (name: string | RegExp) => screen.getByRole("region", { name });
+/** The sections below the opening load separately: wait for one of them. */
+const sectionsLoaded = () => screen.findByRole("region", { name: "Let's talk" });
+
 /** [visible text, href]: external links' "(opens in a new tab)" note is left out. */
 const hrefs = (links: HTMLElement[]) =>
   links.map((l) => [l.textContent!.replace(" (opens in a new tab)", ""), l.getAttribute("href")]);
 
-describe("Home", () => {
-  it("introduces Alex with one h1 and his professional positioning", () => {
+describe("Home: the opening", () => {
+  it("introduces Alex with one h1, his positioning and his background", () => {
     renderHome();
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/^Alex Moylan$/);
     const opening = region("Alex Moylan");
     expect(within(opening).getByText("AI Technology Advisory")).toBeInTheDocument();
     expect(within(opening).getByText("Applied AI & Enterprise Solutions")).toBeInTheDocument();
+    expect(opening).toHaveTextContent(
+      /Enterprise technology experience across Microsoft, HP and Meta.*building AI agents, applications and practical software/,
+    );
+    expect(opening).toHaveTextContent(/BSc \(Hons\) Computing and IT \(Software\), completed 2026/);
+    expect(opening).toHaveTextContent(/AZ-900/);
+  });
+
+  it("offers Meet Alex, My experience and Explore projects", () => {
+    renderHome();
+    const opening = region("Alex Moylan");
     expect(
-      within(opening).getByText(/experience across Microsoft, HP and Meta/),
-    ).toBeInTheDocument();
-    expect(
-      hrefs(within(opening).getAllByRole("link", { name: /View projects|Download CV|^Contact$/ })),
+      hrefs(
+        within(opening).getAllByRole("link", { name: /Meet Alex|My experience|Explore projects/ }),
+      ),
     ).toEqual([
-      ["View projects", "#work"],
-      ["Download CV (PDF)", "/cv/Alex_Moylan_CV.pdf"],
-      ["Contact", "#contact"],
+      ["Meet Alex", "/about"],
+      ["My experience", "/experience"],
+      ["Explore projects", "#work"],
     ]);
   });
 
@@ -44,29 +56,30 @@ describe("Home", () => {
     expect(launchers[0]).toHaveAccessibleDescription(/NEX to open the site menu\./);
     expect(within(opening).getByText("Click NEX")).toHaveClass("nex-hint-pointer");
     expect(within(opening).getByText("Tap NEX")).toHaveClass("nex-hint-touch");
-    // Text-only production configuration: no audio controls.
     expect(opening.querySelector("audio")).toBeNull();
   });
 
-  it("NEX greets the visitor in his guide, beside the orb, and says it is scripted", () => {
+  it("NEX's guide is his own panel next to the orb, never inside it, and says it is scripted", () => {
     const { container } = renderHome();
-    const guide = container.querySelector("#nex-guide")!;
-    // The guide follows NEX's slot in the opening (beneath it), never inside it.
+    const guide = container.querySelector("#nex-guide") as HTMLElement;
     const slot = container.querySelector('[data-nex-slot="hero"]')!;
     expect(slot.contains(guide)).toBe(false);
-    expect(slot.compareDocumentPosition(guide) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(guide as HTMLElement).getByText("NEX // GUIDE")).toBeInTheDocument();
+    expect(within(guide).getByText("NEX // GUIDE")).toBeInTheDocument();
     expect(
-      within(guide as HTMLElement).getByText(GUIDE_START.message, { selector: ".sr-only" }),
+      within(guide).getByText(GUIDE_START.message, { selector: ".sr-only" }),
     ).toBeInTheDocument();
-    const choices = within(guide as HTMLElement).getByRole("list", {
-      name: "Choose where NEX takes you",
-    });
+    const choices = within(guide).getByRole("list", { name: "Choose where NEX takes you" });
     expect(
       within(choices)
         .getAllByRole("button")
         .map((b) => b.textContent),
-    ).toEqual(["I'm hiring", "Show me the work", "Explore the agents", "How do I contact Alex?"]);
+    ).toEqual([
+      "Tell me about Alex",
+      "I'm hiring",
+      "Show me the work",
+      "Explore the agents",
+      "How do I contact Alex?",
+    ]);
     expect(guide).toHaveTextContent(/Scripted guide: NEX follows a hand-written script/);
   });
 
@@ -75,11 +88,20 @@ describe("Home", () => {
     const { container } = renderHome();
     const guide = () => container.querySelector("#nex-guide") as HTMLElement;
     const choices = () => within(within(guide()).getByRole("list"));
+    const said = (text: RegExp) => within(guide()).findByText(text, { selector: ".sr-only" });
 
-    await user.click(choices().getByRole("button", { name: "I'm hiring" }));
-    expect(
-      await within(guide()).findByText(/Microsoft, HP and Meta/, { selector: ".sr-only" }),
-    ).toBeInTheDocument();
+    await user.click(choices().getByRole("button", { name: "Tell me about Alex" }));
+    expect(await said(/HP, Microsoft \(SureStep\) and Meta/)).toBeInTheDocument();
+    expect(choices().getByRole("link", { name: "Meet Alex" })).toHaveAttribute("href", "/about");
+    expect(choices().getByRole("link", { name: "My experience" })).toHaveAttribute(
+      "href",
+      "/experience",
+    );
+    await waitFor(() => expect(guide().querySelector(".nex-guide-message")).toHaveFocus());
+
+    await user.click(choices().getByRole("button", { name: "Start over" }));
+    await user.click(await choices().findByRole("button", { name: "I'm hiring" }));
+    expect(await said(/Microsoft \(SureStep\), HP and Meta/)).toBeInTheDocument();
     expect(choices().getByRole("link", { name: "View experience" })).toHaveAttribute(
       "href",
       "/experience",
@@ -87,25 +109,15 @@ describe("Home", () => {
     expect(choices().getByRole("link", { name: "Download CV" })).toHaveAttribute("download");
 
     await user.click(choices().getByRole("button", { name: "Show me the work" }));
-    expect(
-      await within(guide()).findByText(/two live demos/, { selector: ".sr-only" }),
-    ).toBeInTheDocument();
+    expect(await said(/two live demos/)).toBeInTheDocument();
     expect(choices().getByRole("link", { name: /Open COPILOT \/\/ LAUNCHPAD/ })).toHaveAttribute(
       "href",
       "https://ajmoylan.github.io/copilot-launchpad/",
     );
-    expect(choices().getByRole("link", { name: /Open Repo Posture/ })).toHaveAttribute(
-      "href",
-      "https://ajmoylan.github.io/repo-posture/",
-    );
 
     await user.click(choices().getByRole("button", { name: "Start over" }));
     await user.click(await choices().findByRole("button", { name: "Explore the agents" }));
-    expect(
-      await within(guide()).findByText(/interactive experiences are still to come/, {
-        selector: ".sr-only",
-      }),
-    ).toBeInTheDocument();
+    expect(await said(/interactive experiences are still to come/)).toBeInTheDocument();
     expect(hrefs(choices().getAllByRole("link"))).toEqual([
       ["FORGE · Engineering", "/engineering"],
       ["SYN · AI & ML", "/ai"],
@@ -123,52 +135,69 @@ describe("Home", () => {
       "href",
       "mailto:alex@moylanos.dev",
     );
-    expect(choices().getByRole("link", { name: "Contact page" })).toHaveAttribute(
-      "href",
-      "/contact",
+  });
+
+  it("describes the static NEX emblem and keeps it as the stage's poster", () => {
+    const { container } = renderHome();
+    expect(screen.getByRole("img", { name: /NEX, the MOYLAN\/\/OS host/ })).toBeInTheDocument();
+    const anchor = container.querySelector('[data-stage-anchor="nex"]');
+    expect(anchor?.querySelector("[data-nex-poster] img")).toHaveAccessibleName(
+      /NEX, the MOYLAN\/\/OS host/,
     );
-    // Focus follows NEX's reply, for keyboard and screen-reader users.
-    await waitFor(() => expect(guide().querySelector(".nex-guide-message")).toHaveFocus());
   });
+});
 
-  it("shows the credibility strip: Microsoft, HP, Meta and AZ-900", () => {
+describe("Home: the story below the opening", () => {
+  it("offers three visitor pathways that need no knowledge of the agents", async () => {
     renderHome();
-    const strip = region("Experience and credentials");
-    for (const name of ["Microsoft", "HP", "Meta", "Azure Fundamentals"]) {
-      expect(within(strip).getByText(name)).toBeInTheDocument();
-    }
-    expect(within(strip).getByText(/AZ-900/)).toBeInTheDocument();
-  });
-
-  it("offers three visitor pathways that need no knowledge of the agents", () => {
-    renderHome();
+    await sectionsLoaded();
     const paths = region("What brings you here?");
     const cards = within(paths).getAllByRole("article");
-    expect(cards.map((c) => within(c).getByRole("heading").textContent)).toEqual([
-      "Experience and capabilities",
-      "Projects and live demos",
-      "Specialist areas",
-    ]);
     expect(cards.map((c) => c.querySelector(".os-label")?.textContent)).toEqual([
       "I'm hiring",
       "Show me the work",
       "Explore the agents",
     ]);
-    expect(within(cards[0]!).getByRole("link", { name: /Experience/ })).toHaveAttribute(
+    expect(within(cards[0]!).getByRole("link", { name: "My experience" })).toHaveAttribute(
       "href",
       "/experience",
     );
     expect(
       within(cards[1]!).getByRole("link", { name: /COPILOT \/\/ LAUNCHPAD demo/ }),
     ).toHaveAttribute("href", "https://ajmoylan.github.io/copilot-launchpad/");
-    expect(within(cards[2]!).getByRole("link", { name: /Meet the agents/ })).toHaveAttribute(
+    expect(within(cards[2]!).getByRole("link", { name: "Meet the agents" })).toHaveAttribute(
       "href",
       "#agents",
     );
   });
 
-  it("features the four projects, live demos first, with honest links", () => {
+  it("tells Alex's career as a connected timeline, true to the CV", async () => {
     renderHome();
+    await sectionsLoaded();
+    const career = within(region("Enterprise technology, then applied AI")).getByRole("list", {
+      name: "Career, in order",
+    });
+    const steps = within(career).getAllByRole("listitem");
+    expect(steps.map((s) => within(s).getByRole("heading").textContent)).toEqual([
+      "Hewlett-Packard",
+      "Microsoft · SureStep",
+      "Meta",
+      "Applied AI & software",
+    ]);
+    expect(steps[0]).toHaveTextContent("2018–2019");
+    expect(steps[0]).toHaveTextContent("Innovation Manager and Customer Experience Centre Lead");
+    expect(steps[1]).toHaveTextContent("2019–2022");
+    expect(steps[1]).toHaveTextContent("Business Development Manager, Indirect Channel");
+    expect(steps[1]).toHaveTextContent(/Microsoft partner ecosystem and reseller enablement/);
+    expect(steps[1]).toHaveTextContent("1,000+ reseller partners supported");
+    expect(steps[2]).toHaveTextContent("Market Manager, Reality Labs");
+    expect(steps[3]).toHaveTextContent(/completed 2026, First-Class Honours expected/);
+    expect(steps[3]).toHaveTextContent(/AZ-900/);
+  });
+
+  it("gives all four featured projects the same treatment and clear actions", async () => {
+    renderHome();
+    await sectionsLoaded();
     const work = region("Things I've built");
     const items = within(work)
       .getAllByRole("listitem")
@@ -179,24 +208,27 @@ describe("Home", () => {
       "AI Coding Agent",
       "Medical Image Segmentation for MRI",
     ]);
-    expect(items.slice(0, 2).every((li) => li.classList.contains("os-feature"))).toBe(true);
+    // Identical card styling for every project.
+    expect(new Set(items.map((li) => li.className)).size).toBe(1);
+    expect(items.every((li) => li.classList.contains("os-glow-card"))).toBe(true);
     expect(hrefs(within(items[0]!).getAllByRole("link"))).toEqual([
       ["Open live demo", "https://ajmoylan.github.io/copilot-launchpad/"],
       ["Code on GitHub", "https://github.com/Ajmoylan/copilot-launchpad"],
     ]);
-    expect(within(items[0]!).getByText(/fictional data/)).toBeInTheDocument();
     expect(hrefs(within(items[2]!).getAllByRole("link"))).toEqual([
-      ["Code on GitHub", "https://github.com/Ajmoylan/ai-agent"],
+      ["View the code", "https://github.com/Ajmoylan/ai-agent"],
     ]);
-    // The MRI project's code isn't public: no invented repository, just the Projects page.
+    // The MRI project's code isn't public: no invented repository, just its overview.
     expect(within(items[3]!).getByText("Completed · not yet public")).toBeInTheDocument();
+    expect(within(items[3]!).getByText("Source code not public")).toBeInTheDocument();
     expect(hrefs(within(items[3]!).getAllByRole("link"))).toEqual([
-      ["Details on the Projects page", "/projects"],
+      ["Read the overview", "/projects"],
     ]);
   });
 
-  it("introduces the four specialist agents without claiming unfinished capabilities", () => {
+  it("introduces the four specialist agents without claiming unfinished capabilities", async () => {
     renderHome();
+    await sectionsLoaded();
     const agents = region("Explore the agents");
     expect(hrefs(within(agents).getAllByRole("link"))).toEqual([
       ["Engineering", "/engineering"],
@@ -209,9 +241,9 @@ describe("Home", () => {
     ).toBeInTheDocument();
   });
 
-  it("gives working contact actions and selectable details with copy buttons", () => {
+  it("gives working contact actions and selectable details with copy buttons", async () => {
     renderHome();
-    const contact = region("Let's talk");
+    const contact = await sectionsLoaded();
     expect(within(contact).getByRole("link", { name: "Call me" })).toHaveAttribute(
       "href",
       "tel:+4748901849",
@@ -229,21 +261,9 @@ describe("Home", () => {
     expect(within(contact).getByRole("button", { name: /Copy email/ })).toBeInTheDocument();
   });
 
-  it("describes the static NEX emblem for assistive technology", () => {
-    renderHome();
-    expect(screen.getByRole("img", { name: /NEX, the MOYLAN\/\/OS host/ })).toBeInTheDocument();
-  });
-
-  it("marks NEX's place for the stage and keeps the emblem as its static poster", () => {
+  it("never renders inline style attributes (CSP)", async () => {
     const { container } = renderHome();
-    const anchor = container.querySelector('[data-stage-anchor="nex"]');
-    expect(anchor).not.toBeNull();
-    const poster = anchor?.querySelector("[data-nex-poster]");
-    expect(poster?.querySelector("img")).toHaveAccessibleName(/NEX, the MOYLAN\/\/OS host/);
-  });
-
-  it("never renders inline style attributes (CSP)", () => {
-    const { container } = renderHome();
+    await sectionsLoaded();
     expect(container.querySelector("[style]")).toBeNull();
   });
 });

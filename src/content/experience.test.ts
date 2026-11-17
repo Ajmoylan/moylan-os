@@ -24,7 +24,9 @@ describe("experience content (CV, 16 November 2026)", () => {
     const microsoft = experience.find((r) => r.id === "microsoft")!;
     expect(microsoft.organisation).toBe("Microsoft");
     expect(microsoft.points.join(" ")).toMatch(/Ingram Micro, the distribution partner Microsoft/);
+    // Microsoft is the employer; SureStep is the programme, shown as "Microsoft · SureStep".
     expect(experience.map((r) => r.organisation).join(" ")).not.toMatch(/SureStep|Ingram/);
+    expect(microsoft.unit).toBe("SureStep");
   });
 
   it("only highlights figures the role's own CV points state", () => {

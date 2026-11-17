@@ -54,7 +54,10 @@ export default function Experience() {
                 >
                   {role.title}
                 </h2>
-                <p className="mt-1 text-lg text-text">{role.organisation}</p>
+                <p className="mt-1 text-lg text-text">
+                  {role.organisation}
+                  {role.unit && <span className="text-text-muted"> · {role.unit}</span>}
+                </p>
 
                 {role.highlights && (
                   <dl className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">

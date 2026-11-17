@@ -6,7 +6,7 @@
 
 import type { LinkTarget } from "~/components/ui/SmartLink";
 
-export type GuideNodeId = "start" | "hiring" | "work" | "agents" | "contact";
+export type GuideNodeId = "start" | "about" | "hiring" | "work" | "agents" | "contact";
 
 export type GuideChoice =
   /** Another step of the script. */
@@ -26,6 +26,7 @@ export const GUIDE_START: GuideNode = {
   message:
     "Hello. I'm NEX, Alex Moylan's guide to MOYLAN//OS. Tell me what you're looking for and I'll take you straight there.",
   choices: [
+    { label: "Tell me about Alex", next: "about" },
     { label: "I'm hiring", next: "hiring" },
     { label: "Show me the work", next: "work" },
     { label: "Explore the agents", next: "agents" },

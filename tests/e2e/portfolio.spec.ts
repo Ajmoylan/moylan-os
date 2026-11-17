@@ -107,13 +107,13 @@ test("the CV downloads as Alex's PDF", async ({ page, request }) => {
   const body = await response.body();
   expect(body.subarray(0, 5).toString()).toBe("%PDF-");
   await open(page, "/");
-  // Wide screens: the navigation's button; phones: the opening's (the menu has one too).
+  // Wide screens: the navigation's button; phones: the contact section's (the menu has one too).
   const link = wide(page)
     ? page
         .getByRole("navigation", { name: "Primary" })
         .getByRole("link", { name: "Download CV (PDF)" })
     : page
-        .getByRole("region", { name: "Alex Moylan" })
+        .getByRole("region", { name: "Let's talk" })
         .getByRole("link", { name: "Download CV (PDF)" });
   const [download] = await Promise.all([page.waitForEvent("download"), link.first().click()]);
   expect(download.suggestedFilename()).toBe("Alex_Moylan_CV.pdf");

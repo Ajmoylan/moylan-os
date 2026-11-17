@@ -12,10 +12,22 @@ const cv: GuideChoice[] = site.links.cv
 
 /** Every step after the greeting ("start" is GUIDE_START, which ships with the page). */
 export const GUIDE: Record<Exclude<GuideNodeId, "start">, GuideNode> = {
+  about: {
+    id: "about",
+    message:
+      "Alex worked in enterprise technology at HP, Microsoft (SureStep) and Meta: customer demonstrations, partner and reseller enablement, and technical training. He now builds AI agents and applications, and completed his BSc (Hons) Computing and IT (Software) in 2026.",
+    choices: [
+      { label: "Meet Alex", to: "/about" },
+      { label: "My experience", to: "/experience" },
+      ...cv,
+      { label: "Show me the work", next: "work" },
+      restart,
+    ],
+  },
   hiring: {
     id: "hiring",
     message:
-      "Alex combines enterprise technology experience at Microsoft, HP and Meta with hands-on software engineering and applied AI. Start with his experience, take his CV, or see what he has built.",
+      "Alex combines enterprise technology experience at Microsoft (SureStep), HP and Meta with hands-on software engineering and applied AI. Start with his experience, take his CV, or see what he has built.",
     choices: [
       { label: "View experience", to: "/experience" },
       ...cv,

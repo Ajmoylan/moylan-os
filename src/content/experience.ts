@@ -2,9 +2,10 @@
  * Alex's professional experience, for the Experience page.
  *
  * Truthfulness rule (DESIGN-BRIEF §10): organisations, role titles, places, dates and achievements
- * are as Alex's CV (version of 16 November 2026) states them, with one confirmation from Alex
- * (16 November 2026): he was employed directly by Microsoft in 2019–2022, assigned to support the
- * distribution partner Ingram Micro (he was never employed by Ingram Micro). Nothing is inferred: no
+ * are as Alex's CV (version of 16 November 2026) states them, with confirmations from Alex: he was
+ * employed directly by Microsoft in 2019–2022, assigned to support the distribution partner Ingram
+ * Micro (he was never employed by Ingram Micro) (16 November); the role is shown as "Microsoft ·
+ * SureStep", Microsoft the employer and SureStep the programme (17 November). Nothing is inferred: no
  * extra responsibilities, metrics or outcomes. `highlights` marks the CV's own emphasised figures.
  */
 
@@ -12,6 +13,8 @@ export interface Role {
   /** Stable id for anchors and keys. */
   id: string;
   organisation: string;
+  /** The team or programme within the organisation, shown after it ("Microsoft · SureStep"). */
+  unit?: string;
   title: string;
   location: string;
   /** Years as the CV gives them. */
@@ -54,6 +57,7 @@ export const experience: readonly Role[] = [
   {
     id: "microsoft",
     organisation: "Microsoft",
+    unit: "SureStep",
     title: "Business Development Manager, Indirect Channel",
     location: "London, UK",
     start: 2019,

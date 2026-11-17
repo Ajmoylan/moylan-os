@@ -566,10 +566,15 @@ test.describe("the opening: NEX introduces MOYLAN//OS", () => {
       /straight there\.$/,
     );
     await expect(opening.getByRole("button", { name: "I'm hiring" })).toBeInViewport();
-    // NEX's speech sits beneath the orb, attached to it, and never overlaps it.
+    // NEX's speech sits beside the orb (very wide screens) or beneath it, never over it.
     const orb = (await page.locator('[data-nex-slot="hero"]').boundingBox())!;
     const guide = (await page.locator("#nex-guide").boundingBox())!;
-    expect(guide.y).toBeGreaterThanOrEqual(orb.y + orb.height - 1);
+    const apart =
+      guide.y >= orb.y + orb.height - 1 ||
+      guide.x + guide.width <= orb.x + 1 ||
+      guide.x >= orb.x + orb.width - 1;
+    expect(apart, "NEX's guide never overlaps his orb").toBe(true);
+    await expect(page.locator("#nex-guide")).toBeInViewport();
     // Nothing plays or loads until asked.
     const audioRequests: string[] = [];
     page.on("request", (r) => r.url().includes("/audio/") && audioRequests.push(r.url()));
