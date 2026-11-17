@@ -12,6 +12,7 @@
     "build": "react-router build && node scripts/postbuild.mjs",
     "build:morph-test": "VITE_MORPH_TEST=1 npm run build",
     "build:voice-preview": "NEX_VOICE_PREVIEW_BUILD=1 npm run build",
+    "build:pages": "npm run build && node scripts/cloudflare-pages.mjs",
     "preview": "node scripts/serve-static.mjs",
     "typecheck": "react-router typegen && tsc",
     "lint": "eslint .",
