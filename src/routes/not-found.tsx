@@ -10,8 +10,8 @@ export const meta: Route.MetaFunction = () => [
 ];
 
 /**
- * Catch-all route. Prerendered as /404.html and served by Azure Static Web Apps with a
- * real 404 status for unknown URLs (see config/staticwebapp.config.base.json).
+ * Catch-all route. Prerendered as /404.html and served with a real 404 status for unknown URLs
+ * (Cloudflare Pages does this for a root 404.html; see also config/staticwebapp.config.base.json).
  */
 export default function NotFound() {
   return (

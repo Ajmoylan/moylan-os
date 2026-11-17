@@ -1,4 +1,4 @@
-import { Container, DevelopmentNotice, PageIntro } from "~/components/ui/PageIntro";
+import { Container, PageIntro } from "~/components/ui/PageIntro";
 import { ExternalLink } from "~/components/ui/ExternalLink";
 import { buildMeta } from "~/content/meta";
 import { site } from "~/content/site";
@@ -11,11 +11,12 @@ export const meta: Route.MetaFunction = () =>
     path: "/privacy",
   });
 
-const LAST_UPDATED = "7 November 2026";
+const LAST_UPDATED = "17 November 2026";
 
 /**
- * Draft privacy notice (docs/PRIVACY-COMPLIANCE.md §10). Controller contact details must be
- * completed before public launch (release gate, docs/SECURITY.md §13).
+ * Privacy notice (docs/PRIVACY-COMPLIANCE.md §10), covering GDPR Article 13: controller and
+ * contact, purposes and legal bases, recipients (Cloudflare hosting, Apple iCloud Mail), transfers,
+ * retention, rights and the right to complain to Datatilsynet. Update it before any new data flow.
  */
 export default function Privacy() {
   return (
@@ -28,18 +29,11 @@ export default function Privacy() {
       </PageIntro>
 
       <div className="max-w-3xl">
-        <DevelopmentNotice>
-          <p>
-            <strong className="font-medium text-text">Draft.</strong> This notice will be finalised
-            and reviewed against current Norwegian guidance before the site is published.
-          </p>
-        </DevelopmentNotice>
-
-        <div className="os-prose mt-6">
+        <div className="os-prose">
           <h2>Who is responsible</h2>
           <p>
-            {site.owner} is the controller for personal data processed through this website.
-            Contact:{" "}
+            {site.owner}, based in Oslo, Norway, is the controller for personal data processed
+            through this website. Contact:{" "}
             {site.links.email ? (
               <a
                 href={`mailto:${site.links.email}`}
@@ -58,25 +52,32 @@ export default function Privacy() {
           <ul>
             <li>
               <strong>Delivering the website.</strong> Like every website, the hosting provider
-              (Microsoft Azure Static Web Apps) processes technical data such as your IP address,
-              the page requested, your browser&apos;s user agent and the time of the request in
-              order to deliver pages and keep the service secure. Legal basis: legitimate interests
-              (GDPR Article 6(1)(f)).
+              (Cloudflare, through Cloudflare Pages and its network) processes technical data such
+              as your IP address, the page requested, your browser&apos;s user agent and the time of
+              the request in order to deliver pages and protect the site against attacks and abuse.
+              Cloudflare keeps these technical logs for a limited period under its own policies;
+              this site does not receive or store them. The site&apos;s owner sees only aggregated
+              statistics in Cloudflare&apos;s dashboard (for example, the number of requests), not
+              information about individual visitors. Legal basis: legitimate interests in running a
+              secure, working website (GDPR Article 6(1)(f)).
             </li>
             <li>
               <strong>If you email.</strong> Your name, email address and message are used only to
-              reply. They are deleted within 12 months after the conversation ends unless we work
-              together. Legal basis: legitimate interests, or steps you request before entering into
-              an agreement (Article 6(1)(b)).
+              reply. The mailbox is provided by Apple (iCloud Mail), which stores the messages. They
+              are deleted within 12 months after the conversation ends unless we work together.
+              Legal basis: legitimate interests, or steps you request before entering into an
+              agreement (Article 6(1)(b)).
             </li>
           </ul>
 
           <h2>Cookies, storage and tracking</h2>
           <p>
-            This version of the site does <strong>not</strong> use cookies, local storage, session
-            storage, IndexedDB, service workers, analytics, advertising or social-media tracking.
-            Fonts and all other files are served from this site, not from third parties. These
-            properties are checked by automated tests on every build.
+            This site does <strong>not</strong> set cookies or use local storage, session storage,
+            IndexedDB, service workers, analytics, advertising or social-media tracking. Fonts and
+            all other files are served from this site, not from third parties. These properties are
+            checked by automated tests on every build. The only exception would come from
+            Cloudflare&apos;s security service: if it has to check a suspicious request, it may set
+            a strictly necessary security cookie for that purpose alone.
           </p>
           <p>
             <strong>Motion setting.</strong> The motion control in the header (System, Full, Reduced
@@ -104,18 +105,23 @@ export default function Privacy() {
 
           <h2>Recipients and transfers</h2>
           <p>
-            Microsoft acts as the hosting provider (data processor). Content is delivered from a
-            global network, so requests may be processed outside the EEA under Microsoft&apos;s data
-            protection terms, including EU Standard Contractual Clauses. Links to external sites
+            Cloudflare, Inc. hosts the site and acts as a data processor under its data processing
+            terms. Apple provides the email mailbox. Content is delivered from Cloudflare&apos;s
+            global network, so requests may be processed outside the EEA, including in the United
+            States. Such transfers rely on the safeguards in each provider&apos;s data protection
+            terms, such as the EU Standard Contractual Clauses or the EU–U.S. Data Privacy
+            Framework. No personal data is sold or used for advertising. Links to external sites
             such as GitHub or LinkedIn are ordinary links: those sites only receive data if you
             choose to visit them.
           </p>
 
           <h2>Your rights</h2>
           <p>
-            You have the right to access, correct or delete personal data about you, to restrict or
-            object to processing, and to data portability. You can also complain to the Norwegian
-            Data Protection Authority,{" "}
+            You don&apos;t have to give any personal data to read this site, and no decisions are
+            made about you by automated means. You have the right to access, correct or delete
+            personal data about you, to restrict or object to processing, and to data portability.
+            To use them, email the address above. You can also complain to the Norwegian Data
+            Protection Authority,{" "}
             <ExternalLink href="https://www.datatilsynet.no" data-inline>
               Datatilsynet
             </ExternalLink>
