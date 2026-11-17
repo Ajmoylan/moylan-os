@@ -56,10 +56,12 @@ export default function Privacy() {
               as your IP address, the page requested, your browser&apos;s user agent and the time of
               the request in order to deliver pages and protect the site against attacks and abuse.
               Cloudflare keeps these technical logs for a limited period under its own policies;
-              this site does not receive or store them. The site&apos;s owner sees only aggregated
-              statistics in Cloudflare&apos;s dashboard (for example, the number of requests), not
-              information about individual visitors. Legal basis: legitimate interests in running a
-              secure, working website (GDPR Article 6(1)(f)).
+              this site does not receive or store them. Cloudflare may also ask your browser to send
+              it short reports when a page fails to load (Network Error Logging), which it uses to
+              detect network problems. The site&apos;s owner sees only aggregated statistics in
+              Cloudflare&apos;s dashboard (for example, the number of requests), not information
+              about individual visitors. Legal basis: legitimate interests in running a secure,
+              working website (GDPR Article 6(1)(f)).
             </li>
             <li>
               <strong>If you email.</strong> Your name, email address and message are used only to
