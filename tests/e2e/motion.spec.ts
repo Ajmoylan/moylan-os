@@ -133,7 +133,7 @@ test("Off removes the stage and keeps the static design; motion can be turned ba
   // Off persists across client-side navigation within the visit.
   await page.keyboard.press("Escape");
   await page
-    .getByRole("region", { name: "Choose an environment" })
+    .getByRole("region", { name: "Explore the agents" })
     .getByRole("link", { name: "Engineering" })
     .click();
   await expect(page).toHaveURL(/\/engineering$/);
@@ -344,7 +344,7 @@ for (const viewport of constrainedViewports) {
       const box = (await menu.boundingBox())!;
       expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
       await expect(menu).toHaveCSS("overscroll-behavior-y", "contain");
-      const last = menu.getByRole("link", { name: "CV", exact: true });
+      const last = menu.getByRole("link", { name: "Download CV (PDF)", exact: true });
       await last.scrollIntoViewIfNeeded();
       expect(within((await last.boundingBox())!, (await menu.boundingBox())!)).toBe(true);
     });
@@ -478,7 +478,7 @@ for (const percent of [150, 200] as const) {
         const menu = page.getByRole("navigation", { name: "Mobile" });
         const menuBox = (await menu.boundingBox())!;
         expect(menuBox.y + menuBox.height).toBeLessThanOrEqual(viewport.height);
-        const cv = menu.getByRole("link", { name: "CV", exact: true });
+        const cv = menu.getByRole("link", { name: "Download CV (PDF)", exact: true });
         await cv.scrollIntoViewIfNeeded();
         expect(within((await cv.boundingBox())!, (await menu.boundingBox())!)).toBe(true);
       }

@@ -20,7 +20,7 @@ test("with WebGL2, the stage loads lazily after the page and follows the route's
   expect(stageRequests).toHaveLength(1);
 
   await page
-    .getByRole("region", { name: "Choose an environment" })
+    .getByRole("region", { name: "Explore the agents" })
     .getByRole("link", { name: "Engineering" })
     .click();
   await expect(stage).toHaveAttribute("data-agent", "forge");

@@ -1191,7 +1191,7 @@ The flow simulation publishes the cursor's position (`StageInteraction.cursor`, 
 - **Truthfulness:**
   - A new project status, `unpublished` ("Completed · not yet public"), covers finished work with no public evidence (the MRI segmentation project). `projects.test.ts` requires it to link to nothing, keeps "completed" for work with public evidence, and refuses planned projects (COPILOT // LAUNCHPAD and the insurance claims app are added only once built).
   - `experience.test.ts` pins every role to the CV and checks that each highlighted figure appears in that role's own CV points.
-  - A predicted degree result stays labelled "predicted".
+  - The degree is "completed 2026, First-Class Honours expected" until the classification is confirmed.
 - **About // Meet the human:** a page heading with NEX's line as a transmission, then the portrait beside the introduction (above it below 64rem), key facts, what Alex brings, education and certifications, and "Beyond the code".
   - The portrait is AVIF with a WebP fallback at 480, 768 and 1086 px. It is imported by the About route only, so no other page requests it (tested), with width and height set and descriptive alt text.
   - Its frame's glow breathes with NEX's cycle under Full Motion only; the image itself never fades or moves.
@@ -1230,3 +1230,32 @@ The flow simulation publishes the cursor's position (`StageInteraction.cursor`, 
   - The response is read only up to 2 MB, accepted only as an MP3, and written atomically, never through a linked folder.
   - The remaining CodeQL alert (the SSML template sent to Azure, `js/file-access-to-http`) is the script's purpose and was dismissed as "won't fix" with that justification.
 - **CSP:** `media-src 'self'` (docs/SECURITY.md).
+
+## 25. Phase 1: homepage, NEX's scripted guide, projects, contact and CV (17 November 2026)
+
+- **Opening:** Alex's name and positioning (from `site.headline`) on the left, NEX's slot and his
+  guide on the right on wide screens; on phones and tablets the name, then NEX and the guide, then
+  the rest of the introduction (`.os-hero-grid` areas), so the opening shows both before NEX docks
+  at the first scroll. A credibility strip (Microsoft, HP, Meta, AZ-900), three visitor pathways
+  (I'm hiring, Show me the work, Explore the agents), the four featured projects (the two live
+  demos first), the specialist agents (described as pages today, interactive experiences later)
+  and contact.
+- **NEX's guide** (`components/nex/NexGuide.tsx`, `content/nex-guide-start.ts`,
+  `content/nex-guide.ts`): a deterministic, hand-written script with no AI and no network calls,
+  labelled "Scripted guide" on screen. It reuses NEX // TRANSMISSION beneath the orb (its trace
+  connects them; tests check it never overlaps the slot). The greeting is prerendered; the other
+  steps load on the first choice. Focus moves to each reply. Its message keeps the id `nex-intro`
+  for the local voice preview (whose placeholder recording still speaks the old introduction).
+- **Contact:** `site.links.phone` is published at Alex's request; `ContactActions` gives Call,
+  Email and Download CV buttons, and the details as plain selectable text with copy buttons
+  (Clipboard API, with a "Select and copy" fallback).
+- **CV:** `public/cv/Alex_Moylan_CV.pdf`, made with Microsoft Word from Alex's CV of 17 November
+  2026 (degree "completed 2026, First-Class Honours expected"; employer "Microsoft"). Served with
+  `Content-Disposition: attachment` (`/cv/*` route; the Cloudflare adapter now carries every route
+  rule into `_headers`).
+- **Initial-JS budget:** the homepage now loads 127,960 of 128,000 bytes (40 bytes headroom). To
+  fit, the non-featured project write-ups moved to `projects-all.ts` (Projects page and routing
+  only), routing uses a slug-to-agent map (`projectAgents`, checked against the project list),
+  link rendering is shared (`SmartLink`) and the homepage's agent cards are light (no icons).
+  **Any further homepage content needs a budget review first** (for example, splitting the
+  homepage's below-the-fold sections or the framework chunk).

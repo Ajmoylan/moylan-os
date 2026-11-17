@@ -131,7 +131,7 @@ Any analytics requires: a consent mechanism built to §4.2 standards, a CSP chan
 
 ## 6. Content-related privacy and confidentiality
 
-- **Alex's own data:** the CV and About page contain only what's needed professionally. **Exclude** home address, date of birth, national identity number (fødselsnummer) and personal phone number unless deliberately chosen. Strip PDF and image metadata (author, GPS, device).
+- **Alex's own data:** the CV and About page contain only what's needed professionally. **Exclude** home address, date of birth, national identity number (fødselsnummer) and personal phone number unless deliberately chosen. (Alex chose to publish his phone number on the site and CV on 17 November 2026; his backup email address stays unpublished.) Strip PDF and image metadata (author, GPS, device).
 - **Third parties:** no names, photos, quotes or testimonials of colleagues or clients without their permission. No confidential employer or client information (also covered by the truthfulness rules in DESIGN-BRIEF §10).
 - **Medical imaging (SYN / bowel MRI segmentation project):** health data is a *special category* under GDPR Article 9. Publish **no patient images or data** unless they come from a public dataset whose licence allows redistribution and that is properly anonymised, or use synthetic/illustrative visuals. Cite the dataset and its licence on the case study.
 - **AI Communications Assistant demo:** if a live demo ever accepts visitor input, it falls under Version 2 rules (§8).

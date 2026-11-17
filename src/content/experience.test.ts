@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { experience, roleYears } from "./experience";
 import { profile } from "./profile";
+import { site } from "./site";
 
 describe("experience content (CV, 16 November 2026)", () => {
   it("lists the four roles with the CV's organisations, titles, places and dates, most recent first", () => {
@@ -23,7 +24,9 @@ describe("experience content (CV, 16 November 2026)", () => {
     const microsoft = experience.find((r) => r.id === "microsoft")!;
     expect(microsoft.organisation).toBe("Microsoft");
     expect(microsoft.points.join(" ")).toMatch(/Ingram Micro, the distribution partner Microsoft/);
+    // Microsoft is the employer; SureStep is the programme, shown as "Microsoft · SureStep".
     expect(experience.map((r) => r.organisation).join(" ")).not.toMatch(/SureStep|Ingram/);
+    expect(microsoft.unit).toBe("SureStep");
   });
 
   it("only highlights figures the role's own CV points state", () => {
@@ -36,19 +39,25 @@ describe("experience content (CV, 16 November 2026)", () => {
     }
   });
 
-  it("keeps the predicted degree result labelled as predicted", () => {
+  it("labels the degree classification as expected until it is confirmed", () => {
     const ou = profile.education.find((e) => e.institution === "The Open University");
-    expect(ou?.status).toMatch(/predicted/);
+    expect(ou?.status).toBe("Completed 2026 · First-Class Honours expected");
+    expect(JSON.stringify(profile)).not.toMatch(/predicted|requirements completed/i);
     expect(profile.certifications.map((c) => [c.code, c.status])).toEqual([
       ["AZ-900", "completed"],
       ["AB-731", "in-preparation"],
     ]);
   });
 
-  it("publishes no private contact details anywhere in the site's content", () => {
+  it("publishes only the contact details Alex chose to publish", () => {
+    // Alex's telephone number is published at his request (17 November 2026); his backup email
+    // address and any other number never are.
+    expect(site.links.phone).toEqual({ display: "+47 489 01 849", href: "tel:+4748901849" });
     const dir = __dirname;
     for (const file of readdirSync(dir).filter((f) => f.endsWith(".ts") && !f.includes(".test."))) {
-      const text = readFileSync(join(dir, file), "utf8");
+      const text = readFileSync(join(dir, file), "utf8")
+        .replaceAll("+47 489 01 849", "")
+        .replaceAll("+4748901849", "");
       expect(text.toLowerCase(), file).not.toContain("gmail.com");
       expect(text, file).not.toMatch(/\+\d{2}[\s\d]{7,}|\b\d{3}\s?\d{2}\s?\d{3}\b/);
     }

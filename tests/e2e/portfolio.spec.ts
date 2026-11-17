@@ -46,7 +46,8 @@ test("About introduces the human: NEX's line, the portrait and the professional 
   for (const fact of ["Oslo, Norway", "British and Irish", /UK and EU\/EEA/]) {
     await expect(page.getByText(fact).first()).toBeVisible();
   }
-  await expect(page.getByText(/First-Class Honours predicted/)).toBeVisible();
+  await expect(page.getByText(/Completed 2026 · First-Class Honours expected/)).toBeVisible();
+  await expect(page.getByText(/predicted/i)).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Beyond the code" })).toBeVisible();
 });
 
@@ -83,15 +84,58 @@ test("Projects: finished work without public code says so and links to none", as
   });
   await expect(mri.getByText("Completed · not yet public")).toBeVisible();
   await expect(mri.getByRole("link", { name: /View the code/ })).toHaveCount(0);
-  await expect(page.getByText(/Insurance|LAUNCHPAD/i)).toHaveCount(0);
+  await expect(page.getByText(/Insurance/i)).toHaveCount(0);
+  // The two live demos link to their dashboards and code.
+  for (const [title, demo] of [
+    ["COPILOT // LAUNCHPAD", "https://ajmoylan.github.io/copilot-launchpad/"],
+    ["Repo Posture", "https://ajmoylan.github.io/repo-posture/"],
+  ] as const) {
+    const card = page
+      .getByRole("listitem")
+      .filter({ has: page.getByRole("heading", { name: title }) });
+    await expect(card.getByRole("link", { name: /Open live demo/ })).toHaveAttribute("href", demo);
+  }
 });
 
-test("Contact publishes the public address and profiles only", async ({ page }) => {
+test("the CV downloads as Alex's PDF", async ({ page, request }) => {
+  const response = await request.get("/cv/Alex_Moylan_CV.pdf");
+  expect(response.status()).toBe(200);
+  expect(response.headers()["content-type"]).toBe("application/pdf");
+  expect(response.headers()["content-disposition"]).toBe(
+    'attachment; filename="Alex_Moylan_CV.pdf"',
+  );
+  const body = await response.body();
+  expect(body.subarray(0, 5).toString()).toBe("%PDF-");
+  await open(page, "/");
+  // Wide screens: the navigation's button; phones: the contact section's (the menu has one too).
+  const link = wide(page)
+    ? page
+        .getByRole("navigation", { name: "Primary" })
+        .getByRole("link", { name: "Download CV (PDF)" })
+    : page
+        .getByRole("region", { name: "Let's talk" })
+        .getByRole("link", { name: "Download CV (PDF)" });
+  const [download] = await Promise.all([page.waitForEvent("download"), link.first().click()]);
+  expect(download.suggestedFilename()).toBe("Alex_Moylan_CV.pdf");
+});
+
+test("Contact offers call, email and CV, with selectable details and copy buttons", async ({
+  page,
+}) => {
   await open(page, "/contact");
-  await expect(page.getByRole("link", { name: "alex@moylanos.dev" })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "Call me" })).toHaveAttribute(
+    "href",
+    "tel:+4748901849",
+  );
+  await expect(page.getByRole("link", { name: "Email me" })).toHaveAttribute(
     "href",
     "mailto:alex@moylanos.dev",
   );
+  await expect(page.getByText("+47 489 01 849", { exact: true })).toBeVisible();
+  await expect(page.getByText("alex@moylanos.dev", { exact: true })).toBeVisible();
+  const copy = page.getByRole("button", { name: /Copy email/ });
+  await copy.click();
+  await expect(copy).toHaveText(/Copied ✓|Select and copy/);
   // Exact addresses (anchored names, exact hrefs).
   await expect(
     page.getByRole("link", { name: /^www\.linkedin\.com\/in\/alex-moylan\b/ }),
@@ -102,5 +146,8 @@ test("Contact publishes the public address and profiles only", async ({ page }) 
   );
   const text = await page.locator("body").innerText();
   expect(text.toLowerCase()).not.toContain("gmail");
-  expect(text).not.toMatch(/\+\d{2}[\s\d]{7,}|\b\d{3}\s?\d{2}\s?\d{3}\b/);
+  // Only the number Alex chose to publish.
+  expect(text.replaceAll("+47 489 01 849", "")).not.toMatch(
+    /\+\d{2}[\s\d]{7,}|\b\d{3}\s?\d{2}\s?\d{3}\b/,
+  );
 });

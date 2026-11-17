@@ -1,8 +1,22 @@
 import type { AgentId } from "~/agents/registry";
-import { projects } from "~/content/projects";
 import { notFoundRoute, pageRoutes, projectPathPrefix } from "./manifest";
 
 const byPath = new Map<string, AgentId>(pageRoutes.map((route) => [route.path, route.agent]));
+
+/**
+ * Each project's owning agent, by slug. Kept apart from the project write-ups so every page's
+ * initial load doesn't carry them (initial-JS budget); routing.test.ts checks it matches
+ * content/projects-all.ts exactly.
+ */
+export const projectAgents: Readonly<Record<string, AgentId>> = {
+  "copilot-launchpad": "atlas",
+  "repo-posture": "cipher",
+  "ai-coding-agent": "syn",
+  "mri-segmentation": "syn",
+  "ai-communication-assistant": "syn",
+  "moylan-os": "forge",
+  skyscout: "forge",
+};
 
 /** Strip trailing slashes (SWA redirects them anyway) so "/about/" and "/about" agree. */
 function normalise(pathname: string): string {
@@ -24,7 +38,10 @@ export function agentForPath(pathname: string): AgentId {
   if (path.startsWith(projectPathPrefix)) {
     const slug = path.slice(projectPathPrefix.length);
     if (slug && !slug.includes("/")) {
-      return projects.find((project) => project.slug === slug)?.agent ?? notFoundRoute.agent;
+      return (
+        (Object.hasOwn(projectAgents, slug) ? projectAgents[slug] : undefined) ??
+        notFoundRoute.agent
+      );
     }
   }
 

@@ -77,7 +77,7 @@ deployed by **GitHub Actions** (ARCHITECTURE.md §2 and "Azure Static Web Apps c
 - [x] The portrait is AVIF with a WebP fallback at 480, 768 and 1086 px (10–45 KB AVIF), hashed
       under `/assets/` and requested only by `/about`. Fonts are self-hosted woff2.
 - [x] No source maps in production. SWA compresses text responses itself.
-- [ ] **Budget review before more content:** about 0.1 KB of initial-JS headroom is left. The
+- [ ] **Budget review before more content:** about 40 bytes of initial-JS headroom are left (Phase 1, 17 November 2026). The
       homepage loads the project and profile data, so the next content additions must either
       move data out of the homepage's initial load or come with an explicit budget review.
 

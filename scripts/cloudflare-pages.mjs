@@ -3,8 +3,8 @@
  * `npm run build:pages`. Nothing here weakens a guard; it translates the same output.
  *
  * 1. Headers: Pages has no staticwebapp.config.json, so its `globalHeaders` (the hash-based CSP
- *    and every other security header) become a `/*` rule in `_headers`, and the long-lived cache
- *    rule for hashed `/assets/*` becomes its own rule. HTML keeps Pages' default
+ *    and every other security header) become a `/*` rule in `_headers`, and each route rule (the
+ *    long-lived cache for hashed `/assets/*`, the CV's download disposition) becomes its own rule. HTML keeps Pages' default
  *    `public, max-age=0, must-revalidate` (same effect as the SWA config's `no-cache`); setting
  *    Cache-Control in both rules would make Pages join the two values.
  * 2. URLs without a trailing slash (the SWA config's `trailingSlash: "never"`, matching every
@@ -33,11 +33,15 @@ const config = JSON.parse(await readFile(configPath, "utf8"));
 const { "Cache-Control": htmlCache, ...security } = config.globalHeaders;
 if (!security["Content-Security-Policy"]?.includes("default-src 'none'")) fail("CSP missing.");
 if (htmlCache !== "no-cache") fail(`unexpected HTML Cache-Control "${htmlCache}".`);
-const assetsRule = config.routes.find((route) => route.route === "/assets/*");
-if (!assetsRule) fail("no /assets/* cache rule.");
+if (!config.routes.some((route) => route.route === "/assets/*")) fail("no /assets/* cache rule.");
 const lines = ["/*", ...Object.entries(security).map(([name, value]) => `  ${name}: ${value}`)];
-lines.push("", "/assets/*");
-for (const [name, value] of Object.entries(assetsRule.headers)) lines.push(`  ${name}: ${value}`);
+// Every route rule with headers (hashed assets' cache rule, the CV's download disposition).
+for (const route of config.routes) {
+  if (!route.headers) continue;
+  if (!/^\/[\w./-]*\*?$/.test(route.route)) fail(`unsupported route pattern ${route.route}.`);
+  lines.push("", route.route);
+  for (const [name, value] of Object.entries(route.headers)) lines.push(`  ${name}: ${value}`);
+}
 for (const line of lines) if (line.length > 2000) fail("a _headers line exceeds Pages' limit.");
 await writeFile(join(outDir, "_headers"), `${lines.join("\n")}\n`);
 

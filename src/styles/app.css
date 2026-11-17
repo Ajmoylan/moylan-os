@@ -697,6 +697,374 @@
   }
 
   /*
+   * Homepage opening (Meet Alex). Phones and tablets: name, NEX, his guide, then the rest of the
+   * introduction (NEX docks at the first scroll there). Wide screens: the introduction on the
+   * left, NEX on the right with the guide beneath him. Very wide screens: the guide beside NEX.
+   */
+  .os-hero {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-height: calc(100svh - 4rem);
+    padding-block: 1.25rem 2.5rem;
+  }
+  .os-hero-grid {
+    display: grid;
+    width: 100%;
+    gap: 1.25rem 3rem;
+    grid-template-areas: "name" "nex" "guide" "more";
+  }
+  .os-hero-name {
+    grid-area: name;
+    text-align: center;
+  }
+  .os-hero-nex {
+    grid-area: nex;
+    min-width: 0;
+  }
+  .os-hero-guide {
+    grid-area: guide;
+    min-width: 0;
+  }
+  .os-hero-more {
+    grid-area: more;
+    min-width: 0;
+    text-align: center;
+  }
+  .os-hero-more > p {
+    margin-inline: auto;
+  }
+  .os-hero-more > div {
+    justify-content: center;
+  }
+  .os-hero-more strong {
+    font-weight: 600;
+    color: var(--color-nex);
+  }
+  .os-hero-orb {
+    width: min(58vw, 28svh, 22rem);
+  }
+  @media (min-width: 64rem) {
+    .os-hero-grid {
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+      grid-template-areas: "name nex" "more guide";
+      align-items: center;
+      row-gap: 0.5rem;
+    }
+    .os-hero-name,
+    .os-hero-more {
+      text-align: left;
+    }
+    .os-hero-name {
+      align-self: end;
+    }
+    .os-hero-more {
+      align-self: start;
+    }
+    .os-hero-more > p {
+      margin-inline: 0;
+    }
+    .os-hero-more > div {
+      justify-content: flex-start;
+    }
+    .os-hero-orb {
+      width: min(28vw, 34svh, 24rem);
+    }
+  }
+  @media (min-width: 80rem) {
+    .os-hero-grid {
+      grid-template-columns: minmax(0, 1fr) minmax(17rem, 21rem) auto;
+      grid-template-areas: "name guide nex" "more guide nex";
+      column-gap: 2rem;
+    }
+    .os-hero-guide {
+      align-self: center;
+    }
+    .os-hero-orb {
+      width: min(26vw, 52svh, 27rem);
+    }
+    /* The transmission's trace runs sideways to NEX instead of up. */
+    .os-hero-guide .nex-guide {
+      margin-top: 0;
+    }
+    .os-hero-guide .nex-tx::before {
+      left: 100%;
+      top: 50%;
+      bottom: auto;
+      width: 2rem;
+      height: 1px;
+      background: linear-gradient(to right, rgb(63 224 208 / 0.6), transparent);
+    }
+  }
+
+  /* NEX's guide: his transmission and choices, attached to the orb by the trace. */
+  .nex-guide {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 0.75rem;
+    text-align: center;
+  }
+  .nex-guide-message {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    border-radius: 6px;
+  }
+  .nex-guide-message:focus:not(:focus-visible) {
+    outline: none;
+  }
+  .nex-guide .nex-tx-body {
+    font-size: 1.0625rem;
+  }
+  .nex-guide-choices {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+    max-width: 36rem;
+    margin: 0.9rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .nex-guide-choice:disabled {
+    opacity: 0.6;
+    cursor: progress;
+  }
+  .nex-guide-note {
+    margin-top: 0.6rem;
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+  }
+
+  /*
+   * Homepage chapters: one continuous story (Meet Alex → experience → work → agents → contact).
+   * Each chapter opens with a light seam (a teal hairline that fades out at both ends) and a faint
+   * atmospheric glow, so the sections read as one journey rather than separate blocks.
+   */
+  .os-chapter {
+    position: relative;
+    padding-block: 4rem;
+    background: radial-gradient(ellipse 60% 40% at 50% 0%, rgb(63 224 208 / 0.06), transparent 70%);
+  }
+  @media (min-width: 40rem) {
+    .os-chapter {
+      padding-block: 5.5rem;
+    }
+  }
+  .os-chapter-tight {
+    padding-block: 2.5rem 1rem;
+  }
+  .os-chapter::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgb(63 224 208 / 0.35), transparent);
+  }
+
+  /*
+   * Illuminated card: a hairline that glows in the card's accent (default NEX teal), a soft inner
+   * light from the top corner, and a lift on hover. Used by the pathways, career and all four
+   * featured projects alike, so none looks less finished than another.
+   */
+  .os-glow-card {
+    position: relative;
+    border: 1px solid color-mix(in oklab, var(--accent, var(--color-nex)) 38%, var(--color-steel));
+    border-radius: 16px;
+    background:
+      radial-gradient(
+        ellipse 90% 70% at 100% 0%,
+        color-mix(in oklab, var(--accent, var(--color-nex)) 11%, transparent),
+        transparent 70%
+      ),
+      rgb(18 28 36 / 0.78);
+    box-shadow:
+      0 0 0 1px rgb(0 0 0 / 0.2),
+      0 24px 60px -40px rgb(63 224 208 / 0.35);
+  }
+  @supports (backdrop-filter: blur(1px)) {
+    .os-glow-card {
+      backdrop-filter: blur(10px);
+    }
+  }
+
+  /* Career timeline: four stations joined by a lit rail, with a light trail running along it. */
+  .os-career {
+    --rail: 1.6rem;
+    position: relative;
+    display: grid;
+    gap: 1.25rem;
+    margin: 0;
+    padding: 0 0 0 calc(var(--rail) + 1.25rem);
+    list-style: none;
+  }
+  .os-career::before {
+    content: "";
+    position: absolute;
+    left: var(--rail);
+    top: 1.5rem;
+    bottom: 1.5rem;
+    width: 1px;
+    background: linear-gradient(
+      to bottom,
+      rgb(63 224 208 / 0.15),
+      rgb(63 224 208 / 0.6),
+      rgb(63 224 208 / 0.15)
+    );
+  }
+  .os-career::after {
+    content: "";
+    position: absolute;
+    left: calc(var(--rail) - 1px);
+    top: 1.5rem;
+    width: 3px;
+    height: 4rem;
+    border-radius: 3px;
+    background: linear-gradient(to bottom, transparent, rgb(140 255 240 / 0.9), transparent);
+    opacity: 0;
+  }
+  .os-career-step {
+    position: relative;
+    min-width: 0;
+  }
+  .os-career-node {
+    position: absolute;
+    left: -2.5rem;
+    top: 1.25rem;
+    display: grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border: 1px solid rgb(63 224 208 / 0.55);
+    border-radius: 999px;
+    background: var(--color-obsidian);
+    box-shadow:
+      0 0 18px rgb(63 224 208 / 0.35),
+      inset 0 0 10px rgb(63 224 208 / 0.15);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    color: var(--color-nex);
+  }
+  .os-career-card {
+    height: 100%;
+    padding: 1.5rem;
+    transition:
+      border-color 250ms var(--ease-os),
+      transform 300ms var(--ease-os),
+      box-shadow 300ms var(--ease-os);
+  }
+  .os-career-step:hover .os-career-card {
+    border-color: rgb(63 224 208 / 0.7);
+    box-shadow:
+      0 0 0 1px rgb(63 224 208 / 0.25),
+      0 24px 60px -30px rgb(63 224 208 / 0.6);
+  }
+  .os-career-figure {
+    display: inline-flex;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid rgb(63 224 208 / 0.4);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--color-nex);
+  }
+  .os-career-now .os-career-node {
+    background: rgb(63 224 208 / 0.15);
+  }
+  @media (min-width: 64rem) {
+    /* Wide screens: a horizontal rail through the four nodes, the cards hanging beneath it. */
+    .os-career {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      padding: 3.75rem 0 0;
+    }
+    .os-career::before {
+      left: 1.5rem;
+      right: 1.5rem;
+      top: 1.25rem;
+      bottom: auto;
+      width: auto;
+      height: 1px;
+      background: linear-gradient(
+        90deg,
+        rgb(63 224 208 / 0.15),
+        rgb(63 224 208 / 0.6),
+        rgb(63 224 208 / 0.15)
+      );
+    }
+    .os-career::after {
+      left: 1.5rem;
+      top: calc(1.25rem - 1px);
+      width: 6rem;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, rgb(140 255 240 / 0.9), transparent);
+    }
+    .os-career-node {
+      left: 0.25rem;
+      top: -3.75rem;
+    }
+    .os-career-step:hover .os-career-card {
+      transform: translateY(-3px);
+    }
+  }
+  :root[data-motion="reduced"] .os-career-step:hover .os-career-card,
+  :root[data-motion="off"] .os-career-step:hover .os-career-card {
+    transform: none;
+  }
+  /* The light trail only runs with Full motion. */
+  :root[data-motion="full"] .os-career::after {
+    opacity: 1;
+    animation: os-trail-down 7s var(--ease-os) infinite;
+  }
+  @media (min-width: 64rem) {
+    :root[data-motion="full"] .os-career::after {
+      animation-name: os-trail-across;
+    }
+  }
+  @keyframes os-trail-down {
+    from {
+      top: 1.5rem;
+      opacity: 0;
+    }
+    15%,
+    85% {
+      opacity: 1;
+    }
+    to {
+      top: calc(100% - 5.5rem);
+      opacity: 0;
+    }
+  }
+  @keyframes os-trail-across {
+    from {
+      left: 1.5rem;
+      opacity: 0;
+    }
+    15%,
+    85% {
+      opacity: 1;
+    }
+    to {
+      left: calc(100% - 7.5rem);
+      opacity: 0;
+    }
+  }
+
+  /* The header's CV link: "CV" on tablets (keeps the header one row), "Download CV" elsewhere. */
+  .cv-short {
+    display: none;
+  }
+  @media (min-width: 48rem) and (max-width: 63.99rem) {
+    nav[aria-label="Primary"] .cv-short {
+      display: inline;
+    }
+    nav[aria-label="Primary"] .cv-long {
+      display: none;
+    }
+  }
+
+  /*
    * Header disclosures (motion panel, mobile menu) never extend past the bottom of the viewport,
    * so every control stays reachable on short screens (landscape phones, zoomed layouts). The cap
    * is the viewport height minus the space above the panel's top edge (the header row's measured
@@ -925,60 +1293,15 @@ summary {
   }
 }
 
+/* NEX takes a little more of the opening on phones (he docks as soon as the visitor scrolls). */
 @media (max-width: 63.99rem) {
-  /* Opening: the name as the headline, the role as a quiet teal line beneath it. */
-  #hero-title {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.7rem;
-    font-family: var(--font-sans);
-    font-size: inherit;
-    letter-spacing: normal;
-    text-transform: none;
-  }
-  #hero-title > span:first-child {
-    font-size: clamp(2.1rem, 9.5vw, 3.25rem);
-    font-weight: 600;
-    line-height: 1.02;
-    letter-spacing: -0.025em;
-    color: var(--color-text);
-  }
-  #hero-title > span:nth-child(2) {
-    display: none;
-  }
-  #hero-title > span:nth-child(3) {
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    line-height: 1.5;
-    letter-spacing: 0.24em;
-    text-transform: uppercase;
-    color: var(--color-nex);
-  }
-  /* NEX takes a little more of the opening on phones (he docks as soon as the visitor scrolls). */
   [data-nex-slot="hero"] {
-    width: min(76vw, 34svh, 26rem);
-  }
-}
-
-/* Phones and tablets in portrait: the headline's two phrases on their own lines (not landscape). */
-@media (max-width: 63.99rem) and (min-height: 461px) {
-  #hero-title .os-headline-part {
-    display: block;
-  }
-  #hero-title .os-headline-sep {
-    display: none;
+    width: min(70vw, 30svh, 24rem);
   }
 }
 
 /* Short screens (small phones, landscape): the opening still fits, hint and scroll cue included. */
 @media (max-width: 63.99rem) and (max-height: 740px) {
-  #hero-title {
-    gap: 0.45rem;
-  }
-  #hero-title > span:first-child {
-    font-size: clamp(1.75rem, 7.5vw, 2.4rem);
-  }
   [data-nex-slot="hero"] {
     width: min(68vw, 27svh, 26rem);
   }
@@ -988,9 +1311,6 @@ summary {
 @media (max-height: 600px) and (max-width: 63.99rem) {
   [aria-labelledby="hero-title"] {
     padding-block: 0.75rem;
-  }
-  #hero-title > span:first-child {
-    font-size: 1.75rem;
   }
   [data-nex-slot="hero"] {
     width: min(60vw, 23svh);
@@ -1002,14 +1322,6 @@ summary {
   }
 }
 @media (max-height: 460px) and (max-width: 63.99rem) {
-  #hero-title {
-    flex-direction: row;
-    align-items: baseline;
-    gap: 0.9rem;
-  }
-  #hero-title > span:first-child {
-    font-size: 1.375rem;
-  }
   [data-nex-slot="hero"] {
     width: 22svh;
     margin-block: 0.25rem;

@@ -5,7 +5,8 @@ import { ExternalLink } from "~/components/ui/ExternalLink";
 import { Container, PageIntro } from "~/components/ui/PageIntro";
 import { StatusBadge } from "~/components/ui/StatusBadge";
 import { buildMeta } from "~/content/meta";
-import { caseStudiesInPreparation, projects } from "~/content/projects";
+import { caseStudiesInPreparation } from "~/content/projects";
+import { projects } from "~/content/projects-all";
 import type { Route } from "./+types/projects";
 
 export const meta: Route.MetaFunction = () =>
@@ -22,8 +23,9 @@ export default function Projects() {
       <PageIntro label="MOYLAN//OS / Projects" title="Projects">
         <p>
           Every project carries a visible status. Work is only marked completed when there is public
-          evidence to back it up: a repository, a live demo or a write-up. Finished work whose code
-          isn&apos;t public yet says so.
+          evidence to back it up: a repository, a live demo or a write-up. Live demos say what they
+          show (for example, fictional data), and finished work whose code isn&apos;t public yet
+          says so.
         </p>
       </PageIntro>
 
@@ -37,6 +39,9 @@ export default function Projects() {
                 <StatusBadge status={project.status} />
               </div>
               <h2 className="mt-5 text-xl font-semibold tracking-tight">{project.title}</h2>
+              {project.demoNote && (
+                <p className="mt-2 os-label text-(--accent)">{project.demoNote}</p>
+              )}
               <p className="mt-3 text-sm leading-relaxed text-text-muted">{project.summary}</p>
               {project.stack && (
                 <ul className="mt-4 flex flex-wrap gap-2" aria-label="Technologies">
@@ -50,7 +55,15 @@ export default function Projects() {
                   ))}
                 </ul>
               )}
-              <p className="mt-auto flex flex-wrap gap-x-6 pt-6 text-sm">
+              <p className="mt-auto flex flex-wrap items-center gap-x-6 pt-6 text-sm">
+                {project.evidence.demo && (
+                  <ExternalLink
+                    href={project.evidence.demo}
+                    className="inline-flex min-h-11 items-center rounded-full bg-nex px-5 font-medium text-obsidian transition-colors hover:bg-text"
+                  >
+                    Open live demo
+                  </ExternalLink>
+                )}
                 {project.evidence.repo && (
                   <ExternalLink
                     href={project.evidence.repo}

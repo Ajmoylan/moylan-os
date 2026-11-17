@@ -202,7 +202,7 @@ test.describe("with WebGL2 and full motion", () => {
     await open(page);
     await expect(stage(page)).toHaveAttribute("data-nex-state", "visible");
     await page
-      .getByRole("region", { name: "Choose an environment" })
+      .getByRole("region", { name: "Explore the agents" })
       .getByRole("link", { name: "Engineering" })
       .click();
     await expect(stage(page)).toHaveAttribute("data-agent", "forge");

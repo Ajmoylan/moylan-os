@@ -64,11 +64,12 @@ export default function Privacy() {
               working website (GDPR Article 6(1)(f)).
             </li>
             <li>
-              <strong>If you email.</strong> Your name, email address and message are used only to
-              reply. The mailbox is provided by Apple (iCloud Mail), which stores the messages. They
-              are deleted within 12 months after the conversation ends unless we work together.
-              Legal basis: legitimate interests, or steps you request before entering into an
-              agreement (Article 6(1)(b)).
+              <strong>If you email or call.</strong> Your name, contact details and message are used
+              only to reply. The mailbox is provided by Apple (iCloud Mail), which stores the
+              messages; calls and texts go through Alex&apos;s mobile network operator. Messages and
+              call details are deleted within 12 months after the conversation ends unless we work
+              together. Legal basis: legitimate interests, or steps you request before entering into
+              an agreement (Article 6(1)(b)).
             </li>
           </ul>
 
