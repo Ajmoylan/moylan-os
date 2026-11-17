@@ -16,17 +16,51 @@ export interface Project {
   summary: string;
   /** Main technologies, as the project's CV entry (or README) lists them. */
   stack?: readonly string[];
-  /** Shown in the homepage's featured work. */
+  /** Shown in the homepage's featured work, in this order; the first two most prominently. */
   featured?: boolean;
+  /** What a live demo shows, when it isn't real customer data (e.g. "fictional data"). */
+  demoNote?: string;
   evidence: { repo?: string; demo?: string; writeup?: string; credential?: string };
 }
 
 /**
- * Summaries follow Alex's CV (version of 16 November 2026) where it describes the project, else the
- * project's public README (github.com/Ajmoylan). Repository links are the public repositories only.
- * COPILOT // LAUNCHPAD and the insurance claims application are not listed until they are built.
+ * Summaries follow Alex's CV (version of 17 November 2026) where it describes the project, else the
+ * project's public README (github.com/Ajmoylan). Repository and demo links are public only. The
+ * insurance claims application is not listed until it is built. The other projects live in
+ * projects-all.ts, so the homepage doesn't load them (initial-JS budget).
  */
-export const projects: readonly Project[] = [
+/** The homepage's featured work, in order (the two live demos first). */
+export const featuredProjects: readonly Project[] = [
+  {
+    slug: "copilot-launchpad",
+    title: "COPILOT // LAUNCHPAD",
+    agent: "atlas",
+    status: "completed",
+    summary:
+      "A GitHub Copilot partner-enablement dashboard: customer pipeline, revenue calculator, adoption tracking and a 30/60/90-day roadmap, with 42 tests, CI/CD and CodeQL.",
+    stack: ["React", "TypeScript", "Vite", "GitHub Actions", "GitHub Pages"],
+    featured: true,
+    demoNote: "Live demo with clearly labelled fictional data",
+    evidence: {
+      demo: "https://ajmoylan.github.io/copilot-launchpad/",
+      repo: "https://github.com/Ajmoylan/copilot-launchpad",
+    },
+  },
+  {
+    slug: "repo-posture",
+    title: "Repo Posture",
+    agent: "cipher",
+    status: "completed",
+    summary:
+      "A read-only GitHub security scanner and dashboard: 13 controls, a weighted posture score and prioritised fixes. Its own repository went from 85 to 100; 35 tests at 99% coverage.",
+    stack: ["Python", "JavaScript", "GitHub API", "GitHub Actions"],
+    featured: true,
+    demoNote: "Live dashboard of saved scan reports",
+    evidence: {
+      demo: "https://ajmoylan.github.io/repo-posture/",
+      repo: "https://github.com/Ajmoylan/repo-posture",
+    },
+  },
   {
     slug: "ai-coding-agent",
     title: "AI Coding Agent",
@@ -48,38 +82,6 @@ export const projects: readonly Project[] = [
     stack: ["Python", "PyTorch", "Deep learning"],
     featured: true,
     evidence: {},
-  },
-  {
-    slug: "ai-communication-assistant",
-    title: "AI Communication Assistant",
-    agent: "syn",
-    status: "completed",
-    summary:
-      "A tested full-stack application that uses LLM APIs for communication workflows: summarisation, rewriting and action extraction, with prompt engineering, a FastAPI backend and external AI services integrated end to end.",
-    stack: ["Python", "FastAPI", "OpenAI API"],
-    featured: true,
-    evidence: { repo: "https://github.com/Ajmoylan/ai-comms-assistant" },
-  },
-  {
-    slug: "moylan-os",
-    title: "MOYLAN//OS",
-    agent: "forge",
-    status: "in-progress",
-    summary:
-      "This website: a prerendered React Router application with a persistent Three.js WebGL stage, a GPU particle host and a strict, accessible, privacy-first foundation.",
-    stack: ["TypeScript", "React", "Three.js", "WebGL"],
-    featured: true,
-    evidence: { repo: "https://github.com/Ajmoylan/moylan-os" },
-  },
-  {
-    slug: "skyscout",
-    title: "SkyScout weather app",
-    agent: "forge",
-    status: "completed",
-    summary:
-      "A cross-platform weather app for iOS and the web from one codebase: location-aware weather, favourite cities with drag-and-drop reordering, and sound and haptic feedback.",
-    stack: ["React Native", "Expo", "JavaScript", "Open-Meteo API"],
-    evidence: { repo: "https://github.com/Ajmoylan/skyscout-weather-app" },
   },
 ];
 

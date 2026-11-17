@@ -8,19 +8,26 @@ export const site = {
   name: "MOYLAN//OS",
   url: "https://moylanos.dev",
   owner: "Alex Moylan",
+  /** Alex's CV headline: his professional positioning (homepage hero, About). */
+  headline: "AI Technology Advisory | Applied AI & Enterprise Solutions",
   tagline: "Explore the systems. Meet the mind behind them.",
   positioning: "Software engineering · Applied AI · Cloud & security · Technology advisory",
   description:
     "MOYLAN//OS is the immersive, agent-guided portfolio of Alex Moylan: software engineering, applied AI, cloud security and technology advisory.",
   links: {
-    /** Alex's CV (16 November 2026) and instructions. */
+    /** Alex's CV and instructions (17 November 2026). */
     github: "https://github.com/Ajmoylan" as string | null,
     linkedin: "https://www.linkedin.com/in/alex-moylan" as string | null,
-    /** The public contact address (PRIVACY-COMPLIANCE.md §3, P2). Alex's backup address and phone
-     * number are deliberately never published. */
+    /** The public contact address (PRIVACY-COMPLIANCE.md §3, P2). Alex's backup address is
+     * deliberately never published. */
     email: "alex@moylanos.dev" as string | null,
-    /** Static CV PDF under public/cv/ once Alex approves a final version (not yet). */
-    cv: null as string | null,
+    /** Published at Alex's request (17 November 2026), as on his CV. */
+    phone: { display: "+47 489 01 849", href: "tel:+4748901849" } as {
+      display: string;
+      href: string;
+    } | null,
+    /** The CV Alex approved for publication (PDF made from his CV of 17 November 2026). */
+    cv: "/cv/Alex_Moylan_CV.pdf" as string | null,
   },
 } as const;
 

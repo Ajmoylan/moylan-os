@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Link, NavLink } from "react-router";
+import { NavLink } from "react-router";
 import { agents, specialists } from "~/agents/registry";
-import { primaryNav } from "~/content/site";
+import { primaryNav, site } from "~/content/site";
 import { MotionControl } from "./MotionControl";
 import { Wordmark } from "./Wordmark";
 
@@ -9,6 +9,25 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   `inline-flex min-h-11 min-w-11 items-center justify-center rounded-sm px-2 text-sm transition-colors hover:text-text ${
     isActive ? "text-text" : "text-text-muted"
   }`;
+
+/** "Download CV": the published PDF (none rendered if there isn't one). */
+function CvLink({ className, onClick }: { className: string; onClick?: () => void }) {
+  return (
+    site.links.cv && (
+      <a
+        href={site.links.cv}
+        download
+        onClick={onClick}
+        aria-label="Download CV (PDF)"
+        className={className}
+      >
+        {/* "CV" where the row is tight (tablets), the full label on wide screens and in the menu. */}
+        <span className="cv-short">CV</span>
+        <span className="cv-long">Download CV</span>
+      </a>
+    )
+  );
+}
 
 /** At most one header disclosure is open at a time (no overlapping panels on small screens). */
 type HeaderDisclosure = "menu" | "motion" | null;
@@ -91,12 +110,7 @@ export function SiteHeader() {
                 </li>
               ))}
               <li>
-                <Link
-                  to="/about#cv"
-                  className="inline-flex min-h-11 items-center rounded-full border border-nex/50 px-5 text-sm text-nex transition-colors hover:border-nex hover:bg-nex/10"
-                >
-                  CV
-                </Link>
+                <CvLink className="inline-flex min-h-11 items-center rounded-full border border-nex/50 px-5 text-sm text-nex transition-colors hover:border-nex hover:bg-nex/10" />
               </li>
             </ul>
           </nav>
@@ -156,13 +170,10 @@ export function SiteHeader() {
             </li>
           ))}
           <li>
-            <Link
-              to="/about#cv"
+            <CvLink
               onClick={closeMenu}
               className="flex min-h-11 items-center rounded-md px-2 text-nex"
-            >
-              CV
-            </Link>
+            />
           </li>
         </ul>
       </nav>

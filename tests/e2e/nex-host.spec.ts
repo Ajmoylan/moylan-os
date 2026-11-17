@@ -490,7 +490,7 @@ test.describe("discoverability and positioning (launch sprint refinement)", () =
     await expect(launchers).toHaveCount(1);
     const touch = isMobile;
     await expect(launchers).toHaveAccessibleDescription(
-      touch ? /Tap NEX to navigate/ : /Click NEX to navigate/,
+      touch ? /Tap NEX to open the site menu/ : /Click NEX to open the site menu/,
     );
     await expect(page.locator(touch ? ".nex-hint-pointer" : ".nex-hint-touch")).toBeHidden();
     await page
@@ -547,7 +547,7 @@ test.describe("the opening: NEX introduces MOYLAN//OS", () => {
     await stubDevice(page, { webgl2: true });
   });
 
-  test("a full-screen introduction with subtitles and a way on, silent until asked", async ({
+  test("a full-screen opening: Alex, NEX and his guide in view, the guide never over NEX", async ({
     page,
   }) => {
     await open(page);
@@ -555,23 +555,43 @@ test.describe("the opening: NEX introduces MOYLAN//OS", () => {
     const box = await opening.boundingBox();
     const viewport = page.viewportSize()!;
     expect(box!.height).toBeGreaterThanOrEqual(viewport.height - 64 - 2); // the first view
-    await expect(opening.getByText("NEX // TRANSMISSION")).toBeVisible();
-    await expect(opening.locator("#nex-intro")).toContainText(/Hello\. I'm NEX\./);
+    await expect(page.getByRole("heading", { level: 1, name: "Alex Moylan" })).toBeInViewport();
+    await expect(opening.getByText("NEX // GUIDE")).toBeVisible();
+    await expect(opening.locator("#nex-intro")).toContainText(/Hello\. I'm NEX/);
     // The message types out, then stays complete and readable.
     await expect(opening.locator(".nex-tx")).toHaveAttribute("data-state", "done", {
       timeout: 10_000,
     });
     await expect(opening.locator("#nex-intro [aria-hidden] > span").first()).toHaveText(
-      /guide you\.$/,
+      /straight there\.$/,
     );
-    await expect(opening.getByRole("link", { name: /Scroll to explore/ })).toBeInViewport();
+    await expect(opening.getByRole("button", { name: "I'm hiring" })).toBeInViewport();
+    // NEX's speech sits beneath the orb, attached to it, and never overlaps it.
+    const orb = (await page.locator('[data-nex-slot="hero"]').boundingBox())!;
+    const guide = (await page.locator("#nex-guide").boundingBox())!;
+    expect(guide.y).toBeGreaterThanOrEqual(orb.y + orb.height - 1);
     // Nothing plays or loads until asked.
     const audioRequests: string[] = [];
     page.on("request", (r) => r.url().includes("/audio/") && audioRequests.push(r.url()));
     await page.waitForTimeout(500);
     expect(audioRequests).toEqual([]);
-    await opening.getByRole("link", { name: /Scroll to explore/ }).click();
-    await expect(page.locator("#intro-title")).toBeInViewport();
+  });
+
+  test("NEX's guide answers each choice and leads to the content", async ({ page }) => {
+    await open(page);
+    const guide = page.locator("#nex-guide");
+    await guide.getByRole("button", { name: "Show me the work" }).click();
+    await expect(page.locator("#nex-intro")).toContainText(/two live demos/);
+    await expect(page.locator(".nex-guide-message")).toBeFocused();
+    await expect(guide.getByRole("link", { name: /Open COPILOT \/\/ LAUNCHPAD/ })).toHaveAttribute(
+      "target",
+      "_blank",
+    );
+    await guide.getByRole("button", { name: "Start over" }).click();
+    await guide.getByRole("button", { name: "I'm hiring" }).click();
+    await guide.getByRole("link", { name: "View experience" }).click();
+    await expect(page).toHaveURL(/\/experience$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Experience" })).toBeFocused();
   });
 });
 
@@ -661,6 +681,6 @@ test("text-only builds: the introduction is complete without audio controls", as
   await stubDevice(page, { webgl2: true });
   await open(page);
   test.skip((await voiceMode(page)) === "audio", "this build has a recording");
-  await expect(page.locator("#nex-intro")).toContainText(/Hello\. I'm NEX\./);
+  await expect(page.locator("#nex-intro")).toContainText(/Hello\. I'm NEX/);
   await expect(page.getByRole("button", { name: /Hear NEX|Mute NEX/ })).toHaveCount(0);
 });

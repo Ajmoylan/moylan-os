@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -19,9 +19,13 @@ describe("SiteHeader", () => {
   it("renders the primary navigation with global access links", () => {
     renderHeader();
     const nav = screen.getByRole("navigation", { name: "Primary" });
-    for (const label of ["Projects", "Experience", "About", "Contact", "CV"]) {
+    for (const label of ["Projects", "Experience", "About", "Contact"]) {
       expect(nav).toContainElement(screen.getAllByRole("link", { name: label })[0]!);
     }
+    // Download CV: the PDF itself (desktop navigation; the mobile menu has it too).
+    const cv = within(nav).getByRole("link", { name: "Download CV (PDF)" });
+    expect(cv).toHaveAttribute("href", "/cv/Alex_Moylan_CV.pdf");
+    expect(cv).toHaveAttribute("download");
   });
 
   it("marks the current page with aria-current", () => {

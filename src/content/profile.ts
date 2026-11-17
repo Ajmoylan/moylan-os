@@ -10,13 +10,15 @@
  * src/ ships to the browser.
  */
 
+import { site } from "./site";
+
 export type CredentialStatus = "completed" | "in-preparation";
 
 export interface Education {
   degree: string;
   institution: string;
   years: string;
-  /** Exactly as the CV states it; a predicted result stays labelled "predicted" until awarded. */
+  /** Exactly as the CV states it; an expected classification stays labelled "expected" until confirmed. */
   status: string;
 }
 
@@ -33,7 +35,7 @@ export interface Certification {
 
 export const profile = {
   /** CV headline (approved by Alex as the homepage's positioning). */
-  headline: "AI Technology Advisory | Applied AI & Enterprise Solutions",
+  headline: site.headline,
   /** GitHub profile subtitle. */
   tagline: "Building real-world tools with LLMs and full-stack systems.",
   /** CV, Profile (employer confirmed by Alex: Microsoft, not a partner). */
@@ -48,7 +50,7 @@ export const profile = {
       degree: "BSc (Hons) Computing and IT (Software)",
       institution: "The Open University",
       years: "2023–2026",
-      status: "Degree requirements completed · First-Class Honours predicted",
+      status: "Completed 2026 · First-Class Honours expected",
     },
     {
       degree: "BSc (Hons) Applied Marine Sports Science",

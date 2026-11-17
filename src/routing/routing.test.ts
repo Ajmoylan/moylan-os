@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import routes from "~/routes";
 import { agents } from "~/agents/registry";
-import { projects } from "~/content/projects";
-import { agentForPath } from "./agent-for-path";
+import { projects } from "~/content/projects-all";
+import { agentForPath, projectAgents } from "./agent-for-path";
 import { notFoundRoute, pageRoutes } from "./manifest";
 
 describe("route manifest", () => {
@@ -42,6 +42,7 @@ describe("agentForPath", () => {
   });
 
   it("routes project case studies to the project's owning agent", () => {
+    expect(Object.keys(projectAgents).sort()).toEqual(projects.map((p) => p.slug).sort());
     for (const project of projects) {
       expect(agentForPath(`/projects/${project.slug}`)).toBe(project.agent);
     }

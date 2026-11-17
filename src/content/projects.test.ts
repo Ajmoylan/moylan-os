@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { projects, statusLabel } from "./projects";
+import { statusLabel } from "./projects";
+import { projects } from "./projects-all";
 
 describe("projects content (truthfulness rule)", () => {
   it("has unique slugs", () => {
@@ -29,8 +30,28 @@ describe("projects content (truthfulness rule)", () => {
     }
   });
 
-  it("lists no upcoming project before it is built (COPILOT // LAUNCHPAD, insurance claims)", () => {
+  it("lists no upcoming project before it is built (insurance claims)", () => {
     expect(projects.filter((p) => p.status === "planned")).toEqual([]);
-    expect(projects.map((p) => p.title).join(" ")).not.toMatch(/launchpad|insurance/i);
+    expect(projects.map((p) => p.title).join(" ")).not.toMatch(/insurance/i);
+  });
+
+  it("features the four headline projects, live demos first", () => {
+    expect(projects.filter((p) => p.featured).map((p) => p.slug)).toEqual([
+      "copilot-launchpad",
+      "repo-posture",
+      "ai-coding-agent",
+      "mri-segmentation",
+    ]);
+    for (const slug of ["copilot-launchpad", "repo-posture"]) {
+      const project = projects.find((p) => p.slug === slug)!;
+      expect(project.evidence.demo).toMatch(/^https:\/\/ajmoylan\.github\.io\//);
+      expect(project.demoNote).toBeTruthy();
+    }
+  });
+
+  it("never invents a link for the MRI project, whose code isn't public", () => {
+    const mri = projects.find((p) => p.slug === "mri-segmentation")!;
+    expect(mri.status).toBe("unpublished");
+    expect(mri.evidence).toEqual({});
   });
 });

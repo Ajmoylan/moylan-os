@@ -96,7 +96,7 @@ function sampleDraws(page: Page, frames = 40) {
 
 const toEngineering = (page: Page) =>
   page
-    .getByRole("region", { name: "Choose an environment" })
+    .getByRole("region", { name: "Explore the agents" })
     .getByRole("link", { name: "Engineering" })
     .click();
 const toHome = (page: Page) => page.getByRole("link", { name: "Return to NEX" }).first().click();

@@ -181,7 +181,7 @@ const read = <K extends keyof Probe>(page: Page, key: K) =>
 
 const toEngineering = (page: Page) =>
   page
-    .getByRole("region", { name: "Choose an environment" })
+    .getByRole("region", { name: "Explore the agents" })
     .getByRole("link", { name: "Engineering" })
     .click();
 const toHome = (page: Page) => page.getByRole("link", { name: "Return to NEX" }).first().click();

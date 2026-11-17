@@ -13,7 +13,7 @@ test("the skip link is the first focusable element and moves focus to main", asy
 test("choosing a pathway navigates client-side and focuses the new heading", async ({ page }) => {
   await page.goto("/");
   await page.waitForFunction(() => "__reactRouterRouteModules" in window);
-  const pathways = page.getByRole("region", { name: "Choose an environment" });
+  const pathways = page.getByRole("region", { name: "Explore the agents" });
   await pathways.getByRole("link", { name: "Engineering" }).click();
   await expect(page).toHaveURL(/\/engineering$/);
   const heading = page.getByRole("heading", { level: 1, name: "Engineering" });
@@ -35,11 +35,11 @@ test.describe("without JavaScript", () => {
   test("the prerendered homepage is complete and navigable", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1, name: "Alex Moylan" })).toBeVisible();
-    await expect(page.locator("#nex-intro")).toContainText(
-      /Hello\. I'm NEX\. Welcome to MOYLAN\/\/OS/,
-    );
-    const pathways = page.getByRole("region", { name: "Choose an environment" });
-    await expect(pathways.getByRole("link")).toHaveCount(5);
+    // NEX's greeting and first choices are in the static HTML.
+    await expect(page.locator("#nex-intro")).toContainText(/Hello\. I'm NEX/);
+    await expect(page.getByRole("button", { name: "I'm hiring" })).toBeVisible();
+    const pathways = page.getByRole("region", { name: "Explore the agents" });
+    await expect(pathways.getByRole("link")).toHaveCount(4);
     await pathways.getByRole("link", { name: "Cloud & Security" }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Cloud & Security" })).toBeVisible();
   });
@@ -108,7 +108,7 @@ test("the mobile menu exposes every destination", async ({ page, isMobile }) => 
   await button.click();
   await expect(button).toHaveAttribute("aria-expanded", "true");
   const menu = page.getByRole("navigation", { name: "Mobile" });
-  for (const name of ["Home", "Engineering", "Projects", "Contact", "CV"]) {
+  for (const name of ["Home", "Engineering", "Projects", "Contact", "Download CV (PDF)"]) {
     await expect(menu.getByRole("link", { name, exact: true })).toBeVisible();
   }
   await page.keyboard.press("Escape");
@@ -121,7 +121,7 @@ test("back navigation restores scroll position without using storage", async ({ 
   await page.evaluate(() => window.scrollTo(0, 900));
   await page.waitForFunction(() => window.scrollY >= 890);
   await page
-    .getByRole("region", { name: "Choose an environment" })
+    .getByRole("region", { name: "Explore the agents" })
     .getByRole("link", { name: "Engineering" })
     .click();
   await expect(page).toHaveURL(/\/engineering$/);
