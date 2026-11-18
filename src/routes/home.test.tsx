@@ -109,7 +109,11 @@ describe("Home: the opening", () => {
     expect(choices().getByRole("link", { name: "Download CV" })).toHaveAttribute("download");
 
     await user.click(choices().getByRole("button", { name: "Show me the work" }));
-    expect(await said(/two live demos/)).toBeInTheDocument();
+    expect(await said(/three live demos/)).toBeInTheDocument();
+    expect(choices().getByRole("link", { name: /Open CLAIMFLOW/ })).toHaveAttribute(
+      "href",
+      "https://claimflow-dqst3jxt3iyqy.azurewebsites.net",
+    );
     expect(choices().getByRole("link", { name: /Open COPILOT \/\/ LAUNCHPAD/ })).toHaveAttribute(
       "href",
       "https://ajmoylan.github.io/copilot-launchpad/",
@@ -162,6 +166,10 @@ describe("Home: the story below the opening", () => {
       "href",
       "/experience",
     );
+    expect(within(cards[1]!).getByRole("link", { name: /CLAIMFLOW demo/ })).toHaveAttribute(
+      "href",
+      "https://claimflow-dqst3jxt3iyqy.azurewebsites.net",
+    );
     expect(
       within(cards[1]!).getByRole("link", { name: /COPILOT \/\/ LAUNCHPAD demo/ }),
     ).toHaveAttribute("href", "https://ajmoylan.github.io/copilot-launchpad/");
@@ -195,7 +203,7 @@ describe("Home: the story below the opening", () => {
     expect(steps[3]).toHaveTextContent(/AZ-900/);
   });
 
-  it("gives all four featured projects the same treatment and clear actions", async () => {
+  it("gives all five featured projects the same treatment and clear actions", async () => {
     renderHome();
     await sectionsLoaded();
     const work = region("Things I've built");
@@ -203,25 +211,49 @@ describe("Home: the story below the opening", () => {
       .getAllByRole("listitem")
       .filter((li) => li.querySelector("h3"));
     expect(items.map((li) => li.querySelector("h3")!.textContent)).toEqual([
+      "CLAIMFLOW",
       "COPILOT // LAUNCHPAD",
       "Repo Posture",
       "AI Coding Agent",
       "Medical Image Segmentation for MRI",
     ]);
-    // Identical card styling for every project.
+    // Identical card styling for every project (the first card spans the row on wider screens
+    // through the shared md:first:col-span-2 class, not a class of its own).
     expect(new Set(items.map((li) => li.className)).size).toBe(1);
     expect(items.every((li) => li.classList.contains("os-glow-card"))).toBe(true);
     expect(hrefs(within(items[0]!).getAllByRole("link"))).toEqual([
+      ["Open live demo", "https://claimflow-dqst3jxt3iyqy.azurewebsites.net"],
+      ["Code on GitHub", "https://github.com/Ajmoylan/claimflow"],
+    ]);
+    expect(
+      within(items[0]!).getByText("Independent demo with fictional insurance data"),
+    ).toBeInTheDocument();
+    expect(within(items[0]!).getByText(/about 60 seconds to wake/)).toBeInTheDocument();
+    expect(
+      within(within(items[0]!).getByRole("list", { name: "Technologies" }))
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual([
+      "C#",
+      ".NET 10",
+      "ASP.NET Core",
+      "EF Core",
+      "Azure SQL",
+      "React",
+      "TypeScript",
+      "Azure",
+    ]);
+    expect(hrefs(within(items[1]!).getAllByRole("link"))).toEqual([
       ["Open live demo", "https://ajmoylan.github.io/copilot-launchpad/"],
       ["Code on GitHub", "https://github.com/Ajmoylan/copilot-launchpad"],
     ]);
-    expect(hrefs(within(items[2]!).getAllByRole("link"))).toEqual([
+    expect(hrefs(within(items[3]!).getAllByRole("link"))).toEqual([
       ["View the code", "https://github.com/Ajmoylan/ai-agent"],
     ]);
     // The MRI project's code isn't public: no invented repository, just its overview.
-    expect(within(items[3]!).getByText("Completed · not yet public")).toBeInTheDocument();
-    expect(within(items[3]!).getByText("Source code not public")).toBeInTheDocument();
-    expect(hrefs(within(items[3]!).getAllByRole("link"))).toEqual([
+    expect(within(items[4]!).getByText("Completed · not yet public")).toBeInTheDocument();
+    expect(within(items[4]!).getByText("Source code not public")).toBeInTheDocument();
+    expect(hrefs(within(items[4]!).getAllByRole("link"))).toEqual([
       ["Read the overview", "/projects"],
     ]);
   });

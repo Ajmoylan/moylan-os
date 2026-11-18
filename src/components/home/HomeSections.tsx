@@ -182,7 +182,10 @@ function primaryAction(project: (typeof featured)[number]): { label: string } & 
 
 export default function HomeSections() {
   const { links } = site;
-  const [launchpad, posture] = featured;
+  const bySlug = (slug: string) => featured.find((p) => p.slug === slug);
+  const claimflow = bySlug("claimflow");
+  const launchpad = bySlug("copilot-launchpad");
+  const posture = bySlug("repo-posture");
 
   return (
     <>
@@ -215,9 +218,12 @@ export default function HomeSections() {
               agent="forge"
               number="Show me the work"
               title="Projects and live demos"
-              description="Two live dashboards, their code on GitHub, and AI projects."
+              description="Three live demos, their code on GitHub, and AI projects."
               links={[
                 { label: "Featured projects", href: "#work" },
+                ...(claimflow?.evidence.demo
+                  ? [{ label: "CLAIMFLOW demo", href: claimflow.evidence.demo, external: true }]
+                  : []),
                 ...(launchpad?.evidence.demo
                   ? [
                       {
@@ -280,8 +286,8 @@ export default function HomeSections() {
         title="Things I've built"
         intro={
           <p>
-            Two live demos, an AI agent and a deep-learning project. Each shows its real status and
-            links to its code where it&apos;s public.
+            Three live demos, an AI agent and a deep-learning project. Each shows its real status
+            and links to its code where it&apos;s public.
           </p>
         }
       >
@@ -292,7 +298,7 @@ export default function HomeSections() {
               <li
                 key={project.slug}
                 data-agent={project.agent}
-                className="os-project os-pathway os-glow-card flex flex-col p-6 sm:p-8"
+                className="os-project os-pathway os-glow-card flex flex-col p-6 sm:p-8 md:first:col-span-2"
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h3 className="text-2xl font-semibold tracking-tight">{project.title}</h3>

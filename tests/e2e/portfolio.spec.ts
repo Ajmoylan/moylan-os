@@ -84,9 +84,9 @@ test("Projects: finished work without public code says so and links to none", as
   });
   await expect(mri.getByText("Completed · not yet public")).toBeVisible();
   await expect(mri.getByRole("link", { name: /View the code/ })).toHaveCount(0);
-  await expect(page.getByText(/Insurance/i)).toHaveCount(0);
-  // The two live demos link to their dashboards and code.
+  // The three live demos link to their apps and code.
   for (const [title, demo] of [
+    ["CLAIMFLOW", "https://claimflow-dqst3jxt3iyqy.azurewebsites.net"],
     ["COPILOT // LAUNCHPAD", "https://ajmoylan.github.io/copilot-launchpad/"],
     ["Repo Posture", "https://ajmoylan.github.io/repo-posture/"],
   ] as const) {
@@ -95,6 +95,16 @@ test("Projects: finished work without public code says so and links to none", as
       .filter({ has: page.getByRole("heading", { name: title }) });
     await expect(card.getByRole("link", { name: /Open live demo/ })).toHaveAttribute("href", demo);
   }
+  // CLAIMFLOW is listed first, says it is a fictional-data demo, and links to its code.
+  await expect(page.getByRole("heading", { level: 2 }).first()).toHaveText("CLAIMFLOW");
+  const claimflow = page
+    .getByRole("listitem")
+    .filter({ has: page.getByRole("heading", { name: "CLAIMFLOW" }) });
+  await expect(claimflow.getByText("Independent demo with fictional insurance data")).toBeVisible();
+  await expect(claimflow.getByRole("link", { name: /View the code on GitHub/ })).toHaveAttribute(
+    "href",
+    "https://github.com/Ajmoylan/claimflow",
+  );
 });
 
 test("the CV downloads as Alex's PDF", async ({ page, request }) => {

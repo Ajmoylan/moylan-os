@@ -586,7 +586,11 @@ test.describe("the opening: NEX introduces MOYLAN//OS", () => {
     await open(page);
     const guide = page.locator("#nex-guide");
     await guide.getByRole("button", { name: "Show me the work" }).click();
-    await expect(page.locator("#nex-intro")).toContainText(/two live demos/);
+    await expect(page.locator("#nex-intro")).toContainText(/three live demos/);
+    await expect(guide.getByRole("link", { name: /Open CLAIMFLOW/ })).toHaveAttribute(
+      "target",
+      "_blank",
+    );
     await expect(page.locator(".nex-guide-message")).toBeFocused();
     await expect(guide.getByRole("link", { name: /Open COPILOT \/\/ LAUNCHPAD/ })).toHaveAttribute(
       "target",

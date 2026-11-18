@@ -39,8 +39,13 @@ export const GUIDE: Record<Exclude<GuideNodeId, "start">, GuideNode> = {
   work: {
     id: "work",
     message:
-      "Start with the two live demos: COPILOT // LAUNCHPAD, a GitHub Copilot partner-enablement dashboard, and Repo Posture, a GitHub security posture scanner. Both are open source, with tests and CI.",
+      "Start with the three live demos: CLAIMFLOW, a C#/.NET insurance claims application on Azure, COPILOT // LAUNCHPAD, a GitHub Copilot partner-enablement dashboard, and Repo Posture, a GitHub security posture scanner. All three are open source, with tests and CI.",
     choices: [
+      {
+        label: "Open CLAIMFLOW",
+        href: "https://claimflow-dqst3jxt3iyqy.azurewebsites.net",
+        external: true,
+      },
       {
         label: "Open COPILOT // LAUNCHPAD",
         href: "https://ajmoylan.github.io/copilot-launchpad/",
