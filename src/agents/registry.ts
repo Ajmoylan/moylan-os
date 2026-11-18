@@ -65,7 +65,7 @@ export const agents = {
       { label: "Project gallery and engineering case studies" },
       { label: "Technical walkthroughs, API and architecture diagrams" },
       { label: "GitHub repositories and working demos" },
-      { label: "C#/.NET insurance-claims management application", planned: true },
+      { label: "CLAIMFLOW: a C#/.NET insurance-claims management application, live on Azure" },
     ],
     visualDescription:
       "FORGE, the engineering guide: an amber crystal of interlocking wireframe shards.",

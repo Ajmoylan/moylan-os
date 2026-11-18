@@ -139,7 +139,9 @@ test.describe("normal text size keeps the original typography", () => {
 
   test("notice and status rows keep their single-row layout", async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 800 });
-    await page.goto("/engineering");
+    // An agent page with a planned item, so it has a status row (Engineering has none since CLAIMFLOW
+    // shipped; every agent page uses the same note and contents markup).
+    await page.goto("/cloud-security");
     const note = page.getByRole("note");
     const [label, text] = await note.evaluate((el) =>
       [...el.children].map((child) => child.getBoundingClientRect().top),

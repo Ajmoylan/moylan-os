@@ -9,6 +9,7 @@ const byPath = new Map<string, AgentId>(pageRoutes.map((route) => [route.path, r
  * content/projects-all.ts exactly.
  */
 export const projectAgents: Readonly<Record<string, AgentId>> = {
+  claimflow: "forge",
   "copilot-launchpad": "atlas",
   "repo-posture": "cipher",
   "ai-coding-agent": "syn",

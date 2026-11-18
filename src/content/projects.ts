@@ -26,11 +26,34 @@ export interface Project {
 /**
  * Summaries follow Alex's CV (version of 17 November 2026) where it describes the project, else the
  * project's public README (github.com/Ajmoylan). Repository and demo links are public only. The
- * insurance claims application is not listed until it is built. The other projects live in
- * projects-all.ts, so the homepage doesn't load them (initial-JS budget).
+ * other projects live in projects-all.ts, so the homepage doesn't load them (initial-JS budget).
  */
-/** The homepage's featured work, in order (the two live demos first). */
+/** The homepage's featured work, in order (the live demos first, CLAIMFLOW leading). */
 export const featuredProjects: readonly Project[] = [
+  {
+    slug: "claimflow",
+    title: "CLAIMFLOW",
+    agent: "forge",
+    status: "completed",
+    summary:
+      "An insurance claims management application: a claims workflow enforced by the backend (submitted, under review, approved or rejected), a REST API documented with OpenAPI, a full audit history of every status change, search and a dashboard. 130 automated tests, including SQL Server integration tests, run in CI/CD with CodeQL before each approved deployment to Azure. An independent demonstration with fictional insurance data, not affiliated with any insurer. Its free Azure database can take about 60 seconds to wake after inactivity.",
+    stack: [
+      "C#",
+      ".NET 10",
+      "ASP.NET Core",
+      "EF Core",
+      "Azure SQL",
+      "React",
+      "TypeScript",
+      "Azure",
+    ],
+    featured: true,
+    demoNote: "Independent demo with fictional insurance data",
+    evidence: {
+      demo: "https://claimflow-dqst3jxt3iyqy.azurewebsites.net",
+      repo: "https://github.com/Ajmoylan/claimflow",
+    },
+  },
   {
     slug: "copilot-launchpad",
     title: "COPILOT // LAUNCHPAD",

@@ -30,13 +30,13 @@ describe("projects content (truthfulness rule)", () => {
     }
   });
 
-  it("lists no upcoming project before it is built (insurance claims)", () => {
+  it("lists no upcoming project before it is built", () => {
     expect(projects.filter((p) => p.status === "planned")).toEqual([]);
-    expect(projects.map((p) => p.title).join(" ")).not.toMatch(/insurance/i);
   });
 
-  it("features the four headline projects, live demos first", () => {
+  it("features the five headline projects, live demos first and CLAIMFLOW leading", () => {
     expect(projects.filter((p) => p.featured).map((p) => p.slug)).toEqual([
+      "claimflow",
       "copilot-launchpad",
       "repo-posture",
       "ai-coding-agent",
@@ -47,6 +47,30 @@ describe("projects content (truthfulness rule)", () => {
       expect(project.evidence.demo).toMatch(/^https:\/\/ajmoylan\.github\.io\//);
       expect(project.demoNote).toBeTruthy();
     }
+  });
+
+  it("presents CLAIMFLOW as a live, fictional-data demo with its source and stack", () => {
+    const claimflow = projects.find((p) => p.slug === "claimflow")!;
+    expect(claimflow.status).toBe("completed");
+    expect(claimflow.evidence).toEqual({
+      demo: "https://claimflow-dqst3jxt3iyqy.azurewebsites.net",
+      repo: "https://github.com/Ajmoylan/claimflow",
+    });
+    expect(claimflow.demoNote).toMatch(/independent demo with fictional insurance data/i);
+    expect(claimflow.stack).toEqual([
+      "C#",
+      ".NET 10",
+      "ASP.NET Core",
+      "EF Core",
+      "Azure SQL",
+      "React",
+      "TypeScript",
+      "Azure",
+    ]);
+    for (const topic of [/workflow/, /REST API/, /audit history/, /automated tests/, /CI\/CD/]) {
+      expect(claimflow.summary).toMatch(topic);
+    }
+    expect(claimflow.summary).toMatch(/about 60 seconds to wake/);
   });
 
   it("never invents a link for the MRI project, whose code isn't public", () => {
