@@ -7,15 +7,7 @@
  */
 
 /** @type {readonly { id: string; package: string; expires: string; reason: string }[]} */
-export const AUDIT_EXCEPTIONS = [
-  {
-    id: "GHSA-fc5q-39xc-vjpf",
-    package: "picomatch",
-    expires: "2026-12-31",
-    reason:
-      "ReDoS in glob matching, published 17 November 2026 with no patched release (4.0.7 is the latest). Only in build and test tooling (Vite, Vitest, React Router dev, typescript-eslint) matching the project's own glob patterns; never shipped to the website (production audit: 0).",
-  },
-];
+export const AUDIT_EXCEPTIONS = [];
 
 const BLOCKING = new Set(["high", "critical"]);
 
